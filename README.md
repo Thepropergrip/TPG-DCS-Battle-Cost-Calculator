@@ -6,7 +6,7 @@ TPG Battle Cost Counter monitors every tracked weapon fired and every qualifying
 
 Designed for realism-focused scenarios, large-scale modern warfare missions, and post-mission economic analysis.
 
-🔥 Features
+ Features
 
 Tracks individual weapon expenditures
 
@@ -26,7 +26,7 @@ Export full report to DCS.log
 
 Drop-in ready (DO SCRIPT FILE / MISSION START)
 
-📊 What It Shows
+ What It Shows
 
 Total economic impact per coalition
 
@@ -40,7 +40,7 @@ Full war total
 
 Everything updates live during the mission.
 
-🛠 Installation
+ Installation
 
 Open your mission in Mission Editor
 
@@ -72,7 +72,7 @@ Script OFF (Hard Stop)
 
 Export Full Report to Log
 
-🧠 How Costs Work
+ How Costs Work
 
 All calculations are stored in 2026 USD.
 
@@ -92,7 +92,7 @@ Costs are derived from public sources and inflation-adjusted estimates.
 
 This script is for entertainment and mission realism purposes only.
 
-🎯 Ideal For
+ Ideal For
 
 Modern naval engagements
 
