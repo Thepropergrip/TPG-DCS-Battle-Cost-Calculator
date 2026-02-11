@@ -1,105 +1,81 @@
-TPG Battle Cost Counter (DCS World) – V1
+**# TPG DCS Battle Cost Calculator (V1.2)**
 
-Real-time economic warfare tracking for DCS World.
+A real-cost, real-time economic warfare tracker for DCS World.
 
-TPG Battle Cost Counter monitors every tracked weapon fired and every qualifying unit loss during a mission, using real 2026 USD cost estimates — not broad category averages. It calculates coalition totals, percentage balance of fire, and displays a live economic dashboard in-game.
+Tracks actual weapon expenditures and platform losses using individually priced database entries — not broad categories. Displays coalition spending, percentage of total war cost, and full line-item breakdowns during mission runtime.
 
-Designed for realism-focused scenarios, large-scale modern warfare missions, and post-mission economic analysis.
+Designed for realism, analysis, and large-scale scenario evaluation.
 
- Features
+---
 
-Tracks individual weapon expenditures
+**## What It Tracks**
 
-Tracks aircraft, ground, naval, and static unit losses
+- Missiles fired  
+- Rockets and bombs  
+- Ground unit losses  
+- Static object destruction  
+- Aircraft crashes  
+- Naval losses  
+- Individual weapon quantities  
+- Coalition-specific totals  
+- Real USD-based pricing (2026 adjusted)  
+- Currency conversion (Top 10 global currencies)  
 
-Real-world 2026 USD cost estimates per unit
+**Every weapon and unit is priced individually inside the database.**
 
-Live in-game economic balance chart
+If something shows `$0`, check `dcs.log` or the on-screen display for the exact object name and add it to the DB.
 
-Coalition breakdown (Blue vs Red)
+---
 
-Expanded / Minimal / Hidden / No Display modes
+**## Display Modes**
 
-Script hard ON/OFF toggle
+Radio menu → **TPG Battle Cost Counter**
 
-Export full report to DCS.log
+- Expanded Display (full breakdown)  
+- Minimal Display (coalition totals only)  
+- Display OFF (still recording)  
+- Script ON / OFF (hard stop)  
+- Export Full Report to `dcs.log`  
+- Currency Selection  
 
-Drop-in ready (DO SCRIPT FILE / MISSION START)
+Expanded mode shows:
 
- What It Shows
+- Weapon name  
+- Quantity fired  
+- Line-item cost total  
+- Percentage of coalition total  
+- Coalition subtotal  
+- Overall war total  
 
-Total economic impact per coalition
+---
 
-Percentage share of total war cost
+**## Cost Philosophy**
 
-Itemized fired weapons with cost and % of coalition spend
+All pricing is:
 
-Itemized losses with cost and % impact
+- Adjusted to 2026 USD  
+- Based on public procurement data  
+- Secondary market estimates for legacy systems  
+- Realistic modern export valuations where applicable  
 
-Full war total
+**This script intentionally does not use generalized aircraft category pricing. Each item is individually defined.**
 
-Everything updates live during the mission.
+---
 
- Installation
+**## Installation**
 
-Open your mission in Mission Editor
+1. Open Mission Editor  
+2. Add Trigger → **MISSION START**  
+3. Add Action → **DO SCRIPT FILE**  
+4. Load: `TPG_Battle_Cost_Calculator_v1.2.lua`  
 
-Add a trigger:
+No external frameworks required.
 
-Type: MISSION START
+---
 
-Action: DO SCRIPT FILE
+**## Adding New Weapons**
 
-Select the TPG script
+Inside the `unitCosts` table:
 
-Save mission
-
-No dependencies required.
-
-🎛 Radio Menu Controls (F10 Other)
-
-Expanded Display
-
-Minimal Display
-
-Hidden Display
-
-No Display (Silent Running)
-
-Script ON
-
-Script OFF (Hard Stop)
-
-Export Full Report to Log
-
- How Costs Work
-
-All calculations are stored in 2026 USD.
-
-If something isn’t counting:
-
-Check the in-game display (it prints the exact DCS object name with a $0 if not found)
-
-Or check dcs.log / debrief log for the exact unit or weapon name
-
-Add it to the unitCosts database
-
-⚠ Notes
-
-Small arms burst spam and some cannon fire are intentionally excluded.
-
-Costs are derived from public sources and inflation-adjusted estimates.
-
-This script is for entertainment and mission realism purposes only.
-
- Ideal For
-
-Modern naval engagements
-
-Large-scale air wars
-
-Realism events
-
-PvP economic warfare scenarios
-
-Post-mission cost analysis
+```lua
+["Exact_DCS_Object_Name"] = 123456,
