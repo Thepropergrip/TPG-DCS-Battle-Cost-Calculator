@@ -6,6 +6,7 @@ on:
       - tpg-edm-runner-diagnostic
     paths:
       - ".github/workflows/tpg-public-windows-runner.yml"
+      - "tools/tpg_edm_public_selftest.py"
   workflow_dispatch:
 
 jobs:
@@ -17,72 +18,44 @@ jobs:
       BLENDER_URL: "https://download.blender.org/release/Blender4.1/blender-4.1.1-windows-x64.zip"
       ED_EXPORTER_COMMIT: "5f03ba70ec96ca6ce68028eabc786ecd97f9cf93"
     steps:
+      - uses: actions/checkout@v4
+
       - name: Install Blender 4.1.1
         shell: pwsh
         run: |
-          $ErrorActionPreference="Stop"
-          $zip=Join-Path $env:RUNNER_TEMP "blender.zip"
-          $dir=Join-Path $env:RUNNER_TEMP "blender"
+          $ErrorActionPreference = "Stop"
+          $zip = Join-Path $env:RUNNER_TEMP "blender.zip"
+          $dir = Join-Path $env:RUNNER_TEMP "blender"
           Invoke-WebRequest -Uri $env:BLENDER_URL -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath $dir -Force
-          $exe=Get-ChildItem $dir -Filter blender.exe -Recurse | Select-Object -First 1
-          if(-not $exe){throw "Blender 4.1.1 not found"}
+          $exe = Get-ChildItem $dir -Filter blender.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Blender 4.1.1 not found" }
           "BLENDER_EXE=$($exe.FullName)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Install official Eagle Dynamics EDM exporter
+      - name: Install official ED exporter
         shell: pwsh
         run: |
-          $ErrorActionPreference="Stop"
-          $src=Join-Path $env:RUNNER_TEMP "Blender-EDM-Exporter"
+          $ErrorActionPreference = "Stop"
+          $src = Join-Path $env:RUNNER_TEMP "Blender-EDM-Exporter"
           git clone --filter=blob:none https://github.com/EagleDynamics/Blender-EDM-Exporter.git $src
           git -C $src checkout $env:ED_EXPORTER_COMMIT
-          $scripts=Join-Path $env:RUNNER_TEMP "edm-blender-scripts"
-          $addons=Join-Path $scripts "addons"
+          $scripts = Join-Path $env:RUNNER_TEMP "edm-blender-scripts"
+          $addons = Join-Path $scripts "addons"
           New-Item -ItemType Directory -Force -Path $addons | Out-Null
           Copy-Item -Recurse -Force (Join-Path $src "io_scene_edm") (Join-Path $addons "io_scene_edm")
-          $upper=Join-Path $addons "io_scene_edm\Materials"
-          $temp=Join-Path $addons "io_scene_edm\__materials_casefix"
-          $lower=Join-Path $addons "io_scene_edm\materials"
-          if(Test-Path $upper){
+          $upper = Join-Path $addons "io_scene_edm\Materials"
+          $temp = Join-Path $addons "io_scene_edm\__materials_casefix"
+          $lower = Join-Path $addons "io_scene_edm\materials"
+          if (Test-Path $upper) {
             Rename-Item $upper "__materials_casefix"
             Rename-Item $temp "materials"
           }
-          if(-not(Test-Path (Join-Path $lower "__init__.py"))){throw "ED Materials normalization failed"}
-          if(-not(Test-Path (Join-Path $addons "io_scene_edm\pyedm_311.pyd"))){throw "Official pyedm_311.pyd missing"}
+          if (-not (Test-Path (Join-Path $lower "__init__.py"))) { throw "ED Materials normalization failed" }
+          if (-not (Test-Path (Join-Path $addons "io_scene_edm\pyedm_311.pyd"))) { throw "Official pyedm_311.pyd missing" }
           "BLENDER_USER_SCRIPTS=$scripts" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Export official EDM cube
         shell: pwsh
         run: |
-          $ErrorActionPreference="Stop"
-          $py=Join-Path $env:RUNNER_TEMP "edm_selftest.py"
-          @'
-import addon_utils, bpy, importlib, os, sys
-from pathlib import Path
-
-root = Path(os.environ["BLENDER_USER_SCRIPTS"]) / "addons" / "io_scene_edm"
-sys.path.insert(0, str(root))
-addon_utils.enable("io_scene_edm", default_set=False, persistent=False)
-edm = importlib.import_module("io_scene_edm")
-if not bool(getattr(edm, "native_bindings", False)):
-    raise RuntimeError("ED exporter native_bindings=False")
-
-bpy.ops.object.select_all(action="SELECT")
-bpy.ops.object.delete(use_global=False)
-bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0,0,0))
-bpy.context.object.name="TPG_EDM_PUBLIC_SELFTEST_CUBE"
-
-from io_scene_edm import collection_walker
-from logger import log
-log.errors=[]
-log.warnings=[]
-out=Path(os.environ["RUNNER_TEMP"]) / "TPG_EDM_PUBLIC_SELFTEST.edm"
-collection_walker._write(bpy.context, str(out))
-if log.errors:
-    raise RuntimeError("EDM exporter errors: " + " | ".join(str(x) for x in log.errors))
-if not out.exists() or out.stat().st_size <= 0:
-    raise RuntimeError("No valid EDM produced")
-print("TPG_EDM_PUBLIC_SELFTEST_OK", out, out.stat().st_size)
-'@ | Set-Content -Path $py -Encoding UTF8
-          & $env:BLENDER_EXE --background --python $py
-          if($LASTEXITCODE -ne 0){throw "Official EDM selftest failed exit $LASTEXITCODE"}
+          & $env:BLENDER_EXE --background --python "tools/tpg_edm_public_selftest.py"
+          if ($LASTEXITCODE -ne 0) { throw "Official EDM selftest failed exit $LASTEXITCODE" }
