@@ -1,0 +1,19 @@
+name: TPG Public Windows Runner Diagnostic
+
+on:
+  push:
+    branches:
+      - tpg-edm-runner-diagnostic
+    paths:
+      - ".github/workflows/tpg-public-windows-runner.yml"
+  workflow_dispatch:
+
+jobs:
+  windows-smoke:
+    runs-on: windows-latest
+    steps:
+      - name: Confirm Windows GitHub-hosted runner
+        shell: pwsh
+        run: |
+          Write-Host "TPG_PUBLIC_WINDOWS_RUNNER_OK"
+          [System.Environment]::OSVersion.VersionString
