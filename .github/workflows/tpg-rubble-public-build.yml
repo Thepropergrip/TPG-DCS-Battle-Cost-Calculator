@@ -17,7 +17,7 @@ permissions:
 jobs:
   prepare-textures:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
