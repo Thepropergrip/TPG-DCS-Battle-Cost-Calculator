@@ -87,7 +87,7 @@ jobs:
       - name: Upload ${{ matrix.variant }}
         uses: actions/upload-artifact@v4
         with:
-          name: tpg-rubble-${{ matrix.variant }}
+          name: tpg-rubble-hq500-v2-${{ matrix.variant }}
           path: edm-artifacts/**
           if-no-files-found: error
           retention-days: 30
@@ -103,26 +103,26 @@ jobs:
       - name: Download exported variants
         uses: actions/download-artifact@v4
         with:
-          pattern: tpg-rubble-*
+          pattern: tpg-rubble-hq500-v2-*
           path: edm-artifacts
           merge-multiple: true
 
-      - name: Package and validate DCS drop-in
+      - name: Package and validate coexistable DCS drop-in
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           & "edm-jobs/package_tpg_rubble.ps1"
           if (-not $?) { throw "Packaging failed." }
-          $zip = "edm-artifacts\TPG_Rubble_Pile_20ft_V1_DCS_DropIn.zip"
+          $zip = "edm-artifacts\TPG_Rubble_Pile_20ft_HQ500_V2_DCS_DropIn.zip"
           if (-not (Test-Path $zip)) { throw "Final DCS ZIP missing." }
           Get-Item $zip | ForEach-Object { Write-Host "FINAL PACKAGE: $($_.FullName) $($_.Length) bytes" }
 
       - name: Upload final DCS package
         uses: actions/upload-artifact@v4
         with:
-          name: TPG-Rubble-Pile-20ft-V1-DCS-DropIn
+          name: TPG-Rubble-Pile-20ft-HQ500-V2-DCS-DropIn
           path: |
-            edm-artifacts/TPG_Rubble_Pile_20ft_V1_DCS_DropIn.zip
-            edm-artifacts/TPG_Rubble_Pile_20ft_V1/**
+            edm-artifacts/TPG_Rubble_Pile_20ft_HQ500_V2_DCS_DropIn.zip
+            edm-artifacts/TPG_Rubble_Pile_20ft_HQ500_V2/**
           if-no-files-found: error
           retention-days: 30

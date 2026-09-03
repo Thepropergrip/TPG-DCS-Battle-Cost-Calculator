@@ -3,8 +3,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$asset = "TPG_Rubble_Pile_20ft_HQ500_V2"
+$oldAsset = "TPG_Rubble_Pile_20ft_V1"
+
 if (-not $ZipPath) {
-    $ZipPath = Join-Path $env:GITHUB_WORKSPACE "edm-artifacts\TPG_Rubble_Pile_20ft_V1_DCS_DropIn.zip"
+    $ZipPath = Join-Path $env:GITHUB_WORKSPACE "edm-artifacts\TPG_Rubble_Pile_20ft_HQ500_V2_DCS_DropIn.zip"
 }
 if (-not (Test-Path $ZipPath)) { throw "Rubble package ZIP missing: $ZipPath" }
 
@@ -13,23 +16,23 @@ New-Item -ItemType Directory -Force -Path $temp | Out-Null
 try {
     Expand-Archive -Path $ZipPath -DestinationPath $temp -Force
 
-    $top = Join-Path $temp "TPG_Rubble_Pile_20ft_V1"
-    if (-not (Test-Path $top)) { throw "Expected single top-level mod folder is missing." }
+    $top = Join-Path $temp $asset
+    if (-not (Test-Path $top)) { throw "Expected unique top-level mod folder is missing: $asset" }
 
     $topEntries = @(Get-ChildItem -LiteralPath $temp -Force)
-    if ($topEntries.Count -ne 1 -or $topEntries[0].Name -ne "TPG_Rubble_Pile_20ft_V1") {
+    if ($topEntries.Count -ne 1 -or $topEntries[0].Name -ne $asset) {
         throw "ZIP is not a clean one-folder DCS drop-in package."
     }
 
     $required = @(
         "entry.lua",
         "README.txt",
-        "Database\db_tpg_rubble_pile.lua",
-        "Shapes\TPG_Rubble_Pile_20ft_V1.edm",
-        "Shapes\TPG_Rubble_Pile_20ft_V1_Destroyed.edm",
-        "Shapes\TPG_Rubble_Pile_20ft_V1_LOD1.edm",
-        "Shapes\TPG_Rubble_Pile_20ft_V1_LOD2.edm",
-        "Shapes\TPG_Rubble_Pile_20ft_V1.lods"
+        "Database\db_tpg_rubble_pile_hq500_v2.lua",
+        "Shapes\TPG_Rubble_Pile_20ft_HQ500_V2.edm",
+        "Shapes\TPG_Rubble_Pile_20ft_HQ500_V2_Destroyed.edm",
+        "Shapes\TPG_Rubble_Pile_20ft_HQ500_V2_LOD1.edm",
+        "Shapes\TPG_Rubble_Pile_20ft_HQ500_V2_LOD2.edm",
+        "Shapes\TPG_Rubble_Pile_20ft_HQ500_V2.lods"
     )
     foreach ($rel in $required) {
         $p = Join-Path $top $rel
@@ -39,7 +42,7 @@ try {
         }
     }
 
-    $nested = Join-Path $top "TPG_Rubble_Pile_20ft_V1"
+    $nested = Join-Path $top $asset
     if (Test-Path $nested) { throw "Double-nested mod folder detected." }
 
     foreach ($edm in Get-ChildItem (Join-Path $top "Shapes") -Filter *.edm -File) {
@@ -56,12 +59,21 @@ try {
         throw "entry.lua is missing DCS model/texture mount calls."
     }
 
-    $db = Get-Content (Join-Path $top "Database\db_tpg_rubble_pile.lua") -Raw
-    foreach ($token in @("TPG_Rubble_Pile_20ft_V1","TPG_Rubble_Pile_20ft_V1_Destroyed","Structures")) {
+    $db = Get-Content (Join-Path $top "Database\db_tpg_rubble_pile_hq500_v2.lua") -Raw
+    foreach ($token in @("TPG_Rubble_Pile_20ft_HQ500_V2","TPG_Rubble_Pile_20ft_HQ500_V2_Destroyed","Structures")) {
         if ($db -notmatch [regex]::Escape($token)) { throw "Database registration missing token: $token" }
     }
 
-    Write-Host "TPG_RUBBLE_PACKAGE_VALIDATION_SUCCESS"
+    if ($db -match 'Name\s*=\s*"TPG_Rubble_Pile_20ft_V1"') {
+        throw "Database unit Name still collides with the old V1 asset."
+    }
+    if ($entry -match 'declare_plugin\("TPG Rubble Pile 20ft V1"') {
+        throw "Plugin name still collides with the old V1 asset."
+    }
+
+    Write-Host "TPG_RUBBLE_COEXISTENCE_VALIDATION_SUCCESS"
+    Write-Host "Unique asset ID: $asset"
+    Write-Host "Original preserved ID: $oldAsset"
     Write-Host "ZIP: $ZipPath"
     Write-Host "Textures: $($textures.Count)"
 }
