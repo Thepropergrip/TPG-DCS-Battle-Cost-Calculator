@@ -1,0 +1,6 @@
+{
+  "mode": "script",
+  "script": "edm-jobs/build_tpg_rubble_destroyed.py",
+  "output": "TPG_Rubble_Pile_20ft_V1_Destroyed.edm",
+  "save_blend": true
+}
