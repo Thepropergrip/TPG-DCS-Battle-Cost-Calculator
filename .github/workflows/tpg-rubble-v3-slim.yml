@@ -1,0 +1,49 @@
+name: TPG Rubble Cinematic V3 Slim DropIn
+
+on:
+  push:
+    branches:
+      - tpg-rubble-public-build
+    paths:
+      - ".github/workflows/tpg-rubble-v3-slim.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  slim-dropin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Download completed V3 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: TPG-Rubble-Pile-20ft-Cinematic-V3-DCS-DropIn
+          path: source-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 33800546638
+
+      - name: Keep only the actual DCS drop-in ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p slim
+          src="$(find source-artifact -type f -name 'TPG_Rubble_Pile_20ft_Cinematic_V3_DCS_DropIn.zip' -print -quit)"
+          test -n "$src"
+          cp "$src" slim/
+          ls -lh slim/
+          sha256sum slim/TPG_Rubble_Pile_20ft_Cinematic_V3_DCS_DropIn.zip > slim/SHA256.txt
+          cat slim/SHA256.txt
+
+      - name: Upload slim DCS drop-in only
+        uses: actions/upload-artifact@v4
+        with:
+          name: TPG-Rubble-Pile-20ft-Cinematic-V3-DCS-DropIn-SLIM
+          path: |
+            slim/TPG_Rubble_Pile_20ft_Cinematic_V3_DCS_DropIn.zip
+            slim/SHA256.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
