@@ -4,14 +4,14 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
-UA = "TPG-DCS-RubbleBuilder/3.0 (+https://github.com/Thepropergrip/TPG-DCS-Battle-Cost-Calculator)"
+UA = "TPG-DCS-RubbleBuilder/4.0 (+https://github.com/Thepropergrip/TPG-DCS-Battle-Cost-Calculator)"
 ASSETS = {
-    "rubble": ("TPG_CIN3_RubbleBase", "8k"),
-    "concrete_debris": ("TPG_CIN3_ConcreteDebris", "8k"),
-    "rough_concrete": ("TPG_CIN3_RoughConcrete", "4k"),
-    "concrete_block_wall_03": ("TPG_CIN3_CMU", "4k"),
-    "red_bricks_02": ("TPG_CIN3_Brick", "4k"),
-    "rusty_metal_sheet": ("TPG_CIN3_RustMetal", "4k"),
+    "rubble": ("TPG_CIN4_RubbleBase", "8k"),
+    "concrete_debris": ("TPG_CIN4_ConcreteDebris", "8k"),
+    "rough_concrete": ("TPG_CIN4_RoughConcrete", "4k"),
+    "concrete_block_wall_03": ("TPG_CIN4_CMU", "4k"),
+    "red_bricks_02": ("TPG_CIN4_Brick", "4k"),
+    "rusty_metal_sheet": ("TPG_CIN4_RustMetal", "4k"),
 }
 MAPS = ("diff", "arm", "nor_gl")
 
@@ -93,7 +93,7 @@ def main():
                 "bytes": dst.stat().st_size,
             }
 
-    (out / "TPG_CIN3_PolyHaven_manifest.json").write_text(
+    (out / "TPG_CIN4_PolyHaven_manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
     )
     print("[Poly Haven] cinematic PBR set ready", flush=True)

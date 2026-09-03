@@ -1,6 +1,6 @@
 {
   "mode": "script",
   "script": "edm-jobs/build_tpg_rubble_lod2.py",
-  "output": "TPG_Rubble_Pile_20ft_Cinematic_V3_LOD2.edm",
+  "output": "TPG_Rubble_Pile_20ft_Cinematic_V4_LOD2.edm",
   "save_blend": true
 }

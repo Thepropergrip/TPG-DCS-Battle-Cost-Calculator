@@ -1,4 +1,4 @@
-import bpy, math, os, random, zlib
+import bpy, math, os, random, zlib, subprocess
 from pathlib import Path
 from mathutils import Vector, Euler
 import numpy as np
@@ -38,9 +38,9 @@ def _image_node(material, path, noncolor=False):
 
 def photo_mat(name, prefix):
     m, group = _new_edm_material(name)
-    diff = TEXDIR / f"{prefix}_diff.png"
-    arm = TEXDIR / f"{prefix}_arm.png"
-    nor = TEXDIR / f"{prefix}_nor_gl.png"
+    diff = TEXDIR / f"{prefix}_diff.dds"
+    arm = TEXDIR / f"{prefix}_arm.dds"
+    nor = TEXDIR / f"{prefix}_nor_gl.dds"
 
     d = _image_node(m, diff, False)
     r = _image_node(m, arm, True)
@@ -52,10 +52,38 @@ def photo_mat(name, prefix):
     return m
 
 
+
+def _texconv(src, dst, fmt, width=None, height=None):
+    exe = Path(os.environ.get("TEXCONV_EXE", ""))
+    if not exe.exists():
+        raise RuntimeError("TEXCONV_EXE is required for DCS DDS texture generation")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [str(exe), "-nologo", "-y", "-f", fmt, "-m", "0", "-o", str(dst.parent)]
+    if width and height:
+        cmd += ["-w", str(width), "-h", str(height)]
+    cmd += [str(src)]
+    subprocess.run(cmd, check=True)
+    produced = src.with_suffix(".DDS")
+    if not produced.exists():
+        produced = src.with_suffix(".dds")
+    if not produced.exists():
+        raise RuntimeError(f"texconv did not produce DDS for {src}")
+    if dst.exists():
+        dst.unlink()
+    if produced.resolve() != dst.resolve():
+        produced.replace(dst)
+    if src.exists():
+        src.unlink()
+    if not dst.exists() or dst.stat().st_size < 4096:
+        raise RuntimeError(f"Invalid DDS output: {dst}")
+    return dst
+
+
 def _proc_albedo(name, base, kind="generic", size=2048):
-    path = TEXDIR / f"{name}.png"
+    path = TEXDIR / f"{name}.dds"
     if path.exists():
         return path
+    src = TEXDIR / f"{name}__src.png"
 
     seed = zlib.crc32(name.encode("utf-8")) & 0xffffffff
     rng = np.random.default_rng(seed)
@@ -98,17 +126,18 @@ def _proc_albedo(name, base, kind="generic", size=2048):
     img=bpy.data.images.new(name,width=size,height=size,alpha=True)
     img.pixels.foreach_set(rgba.ravel())
     img.update()
-    img.filepath_raw=str(path)
+    img.filepath_raw=str(src)
     img.file_format='PNG'
     img.save()
     bpy.data.images.remove(img)
-    return path
+    return _texconv(src, path, "BC7_UNORM_SRGB", size, size)
 
 
 def _proc_normal(name, kind="generic", size=2048):
-    path = TEXDIR / f"{name}_Normal.png"
+    path = TEXDIR / f"{name}_Normal.dds"
     if path.exists():
         return path
+    src = TEXDIR / f"{name}_Normal__src.png"
 
     seed=zlib.crc32((name+"_n").encode("utf-8")) & 0xffffffff
     rng=np.random.default_rng(seed)
@@ -138,17 +167,18 @@ def _proc_normal(name, kind="generic", size=2048):
     img=bpy.data.images.new(name+"_Normal",width=size,height=size,alpha=True)
     img.pixels.foreach_set(rgba.ravel())
     img.update()
-    img.filepath_raw=str(path)
+    img.filepath_raw=str(src)
     img.file_format='PNG'
     img.save()
     bpy.data.images.remove(img)
-    return path
+    return _texconv(src, path, "BC7_UNORM", size, size)
 
 
 def _proc_arm(name, rough, metal, size=1024):
-    path=TEXDIR/f"{name}_RoughMet.png"
+    path=TEXDIR/f"{name}_RoughMet.dds"
     if path.exists():
         return path
+    src=TEXDIR/f"{name}_RoughMet__src.png"
     seed=zlib.crc32((name+"_arm").encode("utf-8")) & 0xffffffff
     rng=np.random.default_rng(seed)
     n=(rng.random((size,size),dtype=np.float32)-.5)
@@ -159,17 +189,17 @@ def _proc_arm(name, rough, metal, size=1024):
     img=bpy.data.images.new(name+"_RoughMet",width=size,height=size,alpha=True)
     img.pixels.foreach_set(rgba.ravel())
     img.update()
-    img.filepath_raw=str(path)
+    img.filepath_raw=str(src)
     img.file_format='PNG'
     img.save()
     bpy.data.images.remove(img)
-    return path
+    return _texconv(src, path, "BC7_UNORM", size, size)
 
 
 def proc_mat(name,color,rough=.8,metal=0.0,kind="generic",size=2048):
     m,group=_new_edm_material(name)
     d=_image_node(m,_proc_albedo(name,color,kind,size),False)
-    r=_image_node(m,_proc_arm(name,rough,metal,1024),True)
+    r=_image_node(m,_proc_arm(name,rough,metal,max(512,size//2)),True)
     n=_image_node(m,_proc_normal(name,kind,size),True)
     m.node_tree.links.new(d.outputs["Color"],group.inputs[NodeSocketInDefaultEnum.BASE_COLOR])
     m.node_tree.links.new(r.outputs["Color"],group.inputs[NodeSocketInDefaultEnum.ROUGH_METAL])
@@ -182,24 +212,24 @@ def mats():
         return MATS
     # Photo-based cinematic PBR hero materials are downloaded from Poly Haven before Blender runs.
     MATS.update({
-        'fines': photo_mat('TPG_CIN3_Mat_RubbleBase','TPG_CIN3_RubbleBase'),
-        'aggregate': photo_mat('TPG_CIN3_Mat_ConcreteDebris','TPG_CIN3_ConcreteDebris'),
-        'concrete': photo_mat('TPG_CIN3_Mat_RoughConcrete','TPG_CIN3_RoughConcrete'),
-        'concrete2': photo_mat('TPG_CIN3_Mat_RoughConcreteLight','TPG_CIN3_RoughConcrete'),
-        'cmu': photo_mat('TPG_CIN3_Mat_CMU','TPG_CIN3_CMU'),
-        'brick': photo_mat('TPG_CIN3_Mat_Brick','TPG_CIN3_Brick'),
-        'rust': photo_mat('TPG_CIN3_Mat_RustMetal','TPG_CIN3_RustMetal'),
-        'rebar': proc_mat('TPG_CIN3_RebarDarkOxide',(.085,.050,.035),.91,.52,'rebar',2048),
-        'rust_dark': proc_mat('TPG_CIN3_RustDark',(.075,.038,.025),.93,.45,'rebar',2048),
-        'steel': proc_mat('TPG_CIN3_DullSteel',(.21,.22,.215),.56,.78,'metal',2048),
-        'galv': proc_mat('TPG_CIN3_Galvanized',(.43,.45,.45),.49,.74,'metal',2048),
-        'pipe': proc_mat('TPG_CIN3_DirtyPipe',(.245,.255,.245),.79,.31,'metal',2048),
-        'black': proc_mat('TPG_CIN3_BlackTrash',(.040,.041,.036),.94,.01,'generic',1024),
-        'blue': proc_mat('TPG_CIN3_BluePlastic',(.025,.13,.22),.73,.0,'generic',1024),
-        'white': proc_mat('TPG_CIN3_DirtyWhite',(.58,.57,.52),.90,.0,'generic',1024),
-        'yellow': proc_mat('TPG_CIN3_FadedYellow',(.40,.28,.04),.82,.01,'generic',1024),
-        'wood': proc_mat('TPG_CIN3_BrokenWood',(.22,.13,.055),.93,.0,'wood',2048),
-        'soot': proc_mat('TPG_CIN3_Soot',(.030,.027,.024),.98,.02,'soot',1024),
+        'fines': photo_mat('TPG_CIN4_Mat_RubbleBase','TPG_CIN4_RubbleBase'),
+        'aggregate': photo_mat('TPG_CIN4_Mat_ConcreteDebris','TPG_CIN4_ConcreteDebris'),
+        'concrete': photo_mat('TPG_CIN4_Mat_RoughConcrete','TPG_CIN4_RoughConcrete'),
+        'concrete2': photo_mat('TPG_CIN4_Mat_RoughConcreteLight','TPG_CIN4_RoughConcrete'),
+        'cmu': photo_mat('TPG_CIN4_Mat_CMU','TPG_CIN4_CMU'),
+        'brick': photo_mat('TPG_CIN4_Mat_Brick','TPG_CIN4_Brick'),
+        'rust': photo_mat('TPG_CIN4_Mat_RustMetal','TPG_CIN4_RustMetal'),
+        'rebar': proc_mat('TPG_CIN4_RebarDarkOxide',(.085,.050,.035),.91,.52,'rebar',2048),
+        'rust_dark': proc_mat('TPG_CIN4_RustDark',(.075,.038,.025),.93,.45,'rebar',2048),
+        'steel': proc_mat('TPG_CIN4_DullSteel',(.21,.22,.215),.56,.78,'metal',1024),
+        'galv': proc_mat('TPG_CIN4_Galvanized',(.43,.45,.45),.49,.74,'metal',1024),
+        'pipe': proc_mat('TPG_CIN4_DirtyPipe',(.245,.255,.245),.79,.31,'metal',1024),
+        'black': proc_mat('TPG_CIN4_BlackTrash',(.040,.041,.036),.94,.01,'generic',1024),
+        'blue': proc_mat('TPG_CIN4_BluePlastic',(.025,.13,.22),.73,.0,'generic',1024),
+        'white': proc_mat('TPG_CIN4_DirtyWhite',(.58,.57,.52),.90,.0,'generic',1024),
+        'yellow': proc_mat('TPG_CIN4_FadedYellow',(.40,.28,.04),.82,.01,'generic',1024),
+        'wood': proc_mat('TPG_CIN4_BrokenWood',(.22,.13,.055),.93,.0,'wood',1024),
+        'soot': proc_mat('TPG_CIN4_Soot',(.030,.027,.024),.98,.02,'soot',1024),
     })
     return MATS
 
@@ -399,11 +429,11 @@ def solid_rubble_mound(M,variant,detail,rng,peak):
     for s in range(sectors):
         faces.append((bottom,outer+(s+1)%sectors,outer+s))
 
-    mesh=bpy.data.meshes.new('TPG_CIN3_SOLID_RUBBLE_CORE_mesh')
+    mesh=bpy.data.meshes.new('TPG_CIN4_SOLID_RUBBLE_CORE_mesh')
     mesh.from_pydata(verts,[],faces)
     mesh.update()
     mesh.uv_layers.new(name='UVMap')
-    o=bpy.data.objects.new('TPG_CIN3_SOLID_RUBBLE_CORE',mesh)
+    o=bpy.data.objects.new('TPG_CIN4_SOLID_RUBBLE_CORE',mesh)
     bpy.context.collection.objects.link(o)
     o.data.materials.append(M['fines'])
     return o
@@ -426,7 +456,7 @@ def add_dense_core(M,detail,variant,rng,peak):
             y*=1.07
             z*=.75
         mat=rng.choices([M['fines'],M['aggregate'],M['concrete']],[46,34,20])[0]
-        irregular_chunk(f'TPG_CIN3_CORE_{i:03d}',(x,y,z),(sx,sy,sz),mat,rng,11 if detail==2 else 8)
+        irregular_chunk(f'TPG_CIN4_CORE_{i:03d}',(x,y,z),(sx,sy,sz),mat,rng,11 if detail==2 else 8)
 
 
 def add_fill(M,detail,variant,rng,peak):
@@ -443,7 +473,7 @@ def add_fill(M,detail,variant,rng,peak):
             x*=rng.uniform(1.0,1.09)
             y*=rng.uniform(1.0,1.09)
         mat=rng.choices([M['fines'],M['aggregate'],M['concrete'],M['brick'],M['cmu']],[42,28,15,9,6])[0]
-        irregular_chunk(f'TPG_CIN3_FILL_{i:03d}',(x,y,z),(s*rng.uniform(.78,1.35),s*rng.uniform(.76,1.25),sz),mat,rng,7)
+        irregular_chunk(f'TPG_CIN4_FILL_{i:03d}',(x,y,z),(s*rng.uniform(.78,1.35),s*rng.uniform(.76,1.25),sz),mat,rng,7)
 
 
 def add_collision(M):
@@ -478,7 +508,7 @@ def build(variant='intact',detail=2):
         mat=rng.choices([M['concrete'],M['aggregate'],M['fines'],M['brick'],M['cmu']],[36,28,18,11,7])[0]
         if variant=='destroyed' and rng.random()<.08:
             mat=M['soot']
-        irregular_chunk(f'TPG_CIN3_CHUNK_{i:03d}',(x,y,z),(s*rng.uniform(.76,1.40),s*rng.uniform(.75,1.28),sz),mat,rng,10 if detail==2 else 8)
+        irregular_chunk(f'TPG_CIN4_CHUNK_{i:03d}',(x,y,z),(s*rng.uniform(.76,1.40),s*rng.uniform(.75,1.28),sz),mat,rng,10 if detail==2 else 8)
 
     # Only a few temporary slabs; HQ pass replaces them with detailed fractured plates.
     for i in range({2:8,1:5,0:3}[detail]):
@@ -499,13 +529,13 @@ def build(variant='intact',detail=2):
         ang=rng.uniform(0,math.tau)
         mid=(x+math.cos(ang)*L*.52,y+math.sin(ang)*L*.52,z+rng.uniform(-.03,.18))
         end=(x+math.cos(ang)*L,y+math.sin(ang)*L,z+rng.uniform(-.08,.28))
-        bent_rebar(f'TPG_CIN3_REBAR_{i:02d}',[(x,y,z),mid,end],M['rebar'],rng.uniform(.014,.021))
+        bent_rebar(f'TPG_CIN4_REBAR_{i:02d}',[(x,y,z),mid,end],M['rebar'],rng.uniform(.014,.021))
 
     for i in range({2:12,1:6,0:2}[detail]):
         x=rng.uniform(-2.18,2.18)
         y=rng.uniform(-2.10,2.10)
         z=max(.025,mound_z(x,y,peak)*rng.uniform(.08,.44))
-        broken_pipe(f'TPG_CIN3_PIPE_{i}',(x,y,z),rng.uniform(.38,.96),rng.uniform(.050,.13),M['pipe'] if i%2 else M['rust'],rng)
+        broken_pipe(f'TPG_CIN4_PIPE_{i}',(x,y,z),rng.uniform(.38,.96),rng.uniform(.050,.13),M['pipe'] if i%2 else M['rust'],rng)
 
     if detail>=1:
         for i in range(8 if detail==2 else 4):
@@ -519,7 +549,7 @@ def build(variant='intact',detail=2):
             x=rng.uniform(-2.15,2.15)
             y=rng.uniform(-2.10,2.10)
             z=max(.025,mound_z(x,y,peak)*rng.uniform(.10,.40))
-            cube(f'TPG_CIN3_WOOD_{i}',(x,y,z),(rng.uniform(.42,.92),rng.uniform(.055,.11),rng.uniform(.05,.095)),M['wood'],
+            cube(f'TPG_CIN4_WOOD_{i}',(x,y,z),(rng.uniform(.42,.92),rng.uniform(.055,.11),rng.uniform(.05,.095)),M['wood'],
                  rot=(rng.uniform(-.36,.36),rng.uniform(-.36,.36),rng.uniform(0,math.tau)),bevel=.009)
 
     if detail==2:
@@ -532,7 +562,7 @@ def build(variant='intact',detail=2):
                 (x+rng.uniform(.18,.46),y+rng.uniform(-.36,.36),z+rng.uniform(-.08,.14)),
                 (x+rng.uniform(.40,.78),y+rng.uniform(-.48,.48),max(.02,z+rng.uniform(-.22,.05)))
             ]
-            cable(f'TPG_CIN3_WIRE_{i}',pts,M['black'] if i%4 else M['rebar'],rng.uniform(.008,.014),1)
+            cable(f'TPG_CIN4_WIRE_{i}',pts,M['black'] if i%4 else M['rebar'],rng.uniform(.008,.014),1)
 
     if variant=='destroyed' and detail>=1:
         for i in range(26 if detail==2 else 10):
@@ -540,7 +570,7 @@ def build(variant='intact',detail=2):
             rr=rng.uniform(2.55,3.48)
             x=math.cos(a)*rr
             y=math.sin(a)*rr
-            irregular_chunk(f'TPG_CIN3_BLAST_{i}',(x,y,rng.uniform(-.035,.075)),
+            irregular_chunk(f'TPG_CIN4_BLAST_{i}',(x,y,rng.uniform(-.035,.075)),
                             (rng.uniform(.12,.32),rng.uniform(.12,.34),rng.uniform(.08,.20)),
                             M['soot'] if i%3==0 else M['aggregate'],rng,7)
 
@@ -548,7 +578,7 @@ def build(variant='intact',detail=2):
     for o in bpy.context.scene.objects:
         ensure_uv(o)
 
-    bpy.context.scene['TPG_asset']='TPG Rubble Pile 20ft Cinematic V3'
+    bpy.context.scene['TPG_asset']='TPG Rubble Pile 20ft Cinematic V4'
     bpy.context.scene['TPG_variant']=variant
     bpy.context.scene['TPG_detail']=detail
-    bpy.context.scene['TPG_render_target']='cinematic PBR rubble / DCS optimized'
+    bpy.context.scene['TPG_render_target']='cinematic PBR rubble / DCS optimized DDS'

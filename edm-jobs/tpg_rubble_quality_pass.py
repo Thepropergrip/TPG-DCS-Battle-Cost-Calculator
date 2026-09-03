@@ -207,7 +207,7 @@ def _batch_visual_by_material():
         bpy.ops.object.join()
         joined=bpy.context.object
         safe=''.join(c if c.isalnum() else '_' for c in mat_name)
-        joined.name='TPG_CIN3_BATCH_'+safe[-46:]
+        joined.name='TPG_CIN4_BATCH_'+safe[-46:]
         ensure_uv(joined)
 
 
@@ -224,7 +224,7 @@ def _add_masonry(M,rng,variant,detail):
             y*=1.08
             z*=.74
         rot=(rng.uniform(-.64,.64),rng.uniform(-.64,.64),rng.uniform(0,math.tau))
-        _cmu(f'TPG_CIN3_CMU_{i}',(x,y,z),rot,M,broken=(i%4==1 or i%7==0 or i%11==0))
+        _cmu(f'TPG_CIN4_CMU_{i}',(x,y,z),rot,M,broken=(i%4==1 or i%7==0 or i%11==0))
 
     brick_n={2:138,1:55,0:16}[detail]
     for i in range(brick_n):
@@ -238,7 +238,7 @@ def _add_masonry(M,rng,variant,detail):
             y*=1.08
             z*=.72
         rot=(rng.uniform(-.75,.75),rng.uniform(-.75,.75),rng.uniform(0,math.tau))
-        _brick(f'TPG_CIN3_BRICK_{i}',(x,y,z),rot,M,half=(i%3==0),chipped=(i%4==0 or i%9==0))
+        _brick(f'TPG_CIN4_BRICK_{i}',(x,y,z),rot,M,half=(i%3==0),chipped=(i%4==0 or i%9==0))
 
     chip_n={2:210,1:82,0:24}[detail]
     for i in range(chip_n):
@@ -249,7 +249,7 @@ def _add_masonry(M,rng,variant,detail):
         s=rng.uniform(.035,.115)
         z=max(-.05,mound_z(x,y,1.25)*rng.uniform(.01,.18)-s*.28)
         mat=rng.choices([M['aggregate'],M['brick'],M['cmu'],M['fines']],[55,22,12,11])[0]
-        irregular_chunk(f'TPG_CIN3_MASONRY_CHIP_{i}',(x,y,z),(s*1.35,s,s*.66),mat,rng,7)
+        irregular_chunk(f'TPG_CIN4_MASONRY_CHIP_{i}',(x,y,z),(s*1.35,s,s*.66),mat,rng,7)
 
 
 def _add_fractured_slabs(M,rng,variant,detail):
@@ -272,7 +272,7 @@ def _add_fractured_slabs(M,rng,variant,detail):
             z*=.72
             rot=(rot[0]+.10,rot[1]-.08,rot[2]+.16)
         loc=(x,y,z)
-        _fractured_slab(f'TPG_CIN3_FRACTURED_SLAB_{i}',loc,L,W,T,rot,M['concrete'],M['aggregate'],rng)
+        _fractured_slab(f'TPG_CIN4_FRACTURED_SLAB_{i}',loc,L,W,T,rot,M['concrete'],M['aggregate'],rng)
 
         bars=4 if detail==2 and i<16 else (2 if detail>=1 else 1)
         for k in range(bars):
@@ -284,7 +284,7 @@ def _add_fractured_slabs(M,rng,variant,detail):
             R=Euler(rot,'XYZ').to_matrix()
             q1=p+R@Vector((side*rng.uniform(.16,.30),rng.uniform(-.08,.08),rng.uniform(.02,.12)))
             q2=q1+R@Vector((side*rng.uniform(.16,.36),rng.uniform(-.10,.10),rng.uniform(-.03,.16)))
-            bent_rebar(f'TPG_CIN3_SLAB_REBAR_{i}_{k}',[tuple(p),tuple(q1),tuple(q2)],M['rebar'],rng.uniform(.014,.020))
+            bent_rebar(f'TPG_CIN4_SLAB_REBAR_{i}_{k}',[tuple(p),tuple(q1),tuple(q2)],M['rebar'],rng.uniform(.014,.020))
 
 
 def _add_reinforcement(M,rng,variant,detail):
@@ -304,13 +304,13 @@ def _add_reinforcement(M,rng,variant,detail):
             R=Euler((0,0,angle),'XYZ').to_matrix()
             p=R@Vector((-.66,y,0))+Vector((ox,oy,oz))
             q=R@Vector((.66,y+rng.uniform(-.035,.035),rng.uniform(.02,.11)))+Vector((ox,oy,oz))
-            rebar(f'TPG_CIN3_CAGE_{cage}_L_{i}',tuple(p),tuple(q),M['rebar'],.016)
+            rebar(f'TPG_CIN4_CAGE_{cage}_L_{i}',tuple(p),tuple(q),M['rebar'],.016)
         for i in range(cross):
             x=-.56+i*(1.12/max(1,cross-1))
             R=Euler((0,0,angle),'XYZ').to_matrix()
             p=R@Vector((x,-.46,.02))+Vector((ox,oy,oz))
             q=R@Vector((x+rng.uniform(-.03,.03),.46,.08))+Vector((ox,oy,oz))
-            rebar(f'TPG_CIN3_CAGE_{cage}_X_{i}',tuple(p),tuple(q),M['rebar'],.015)
+            rebar(f'TPG_CIN4_CAGE_{cage}_X_{i}',tuple(p),tuple(q),M['rebar'],.015)
 
     # Short bent loose bars; no more long black "spider legs" radiating metres outside the pile.
     loose=24 if detail==2 else 10
@@ -325,7 +325,7 @@ def _add_reinforcement(M,rng,variant,detail):
         p=(x,y,z)
         q=(x+math.cos(ang)*L*.55,y+math.sin(ang)*L*.55,z+rng.uniform(-.04,.16))
         r=(x+math.cos(ang+.18)*L,y+math.sin(ang+.18)*L,z+rng.uniform(-.06,.24))
-        bent_rebar(f'TPG_CIN3_LOOSE_BAR_{i}',[p,q,r],M['rebar'],rng.uniform(.014,.020))
+        bent_rebar(f'TPG_CIN4_LOOSE_BAR_{i}',[p,q,r],M['rebar'],rng.uniform(.014,.020))
 
 
 def _add_hero_metal(M,rng,variant,detail):
@@ -344,7 +344,7 @@ def _add_hero_metal(M,rng,variant,detail):
     for i,(loc,L,rot,mat) in enumerate(beams[:6 if detail==2 else 3]):
         if variant=='destroyed':
             loc=(loc[0]*1.07,loc[1]*1.08,loc[2]*.72)
-        _ibeam(f'TPG_CIN3_IBEAM_{i}',loc,L,rot,mat)
+        _ibeam(f'TPG_CIN4_IBEAM_{i}',loc,L,rot,mat)
 
     sheets=[
         ((-1.56,-.88,.25),1.02,.46,(.15,-.36,.32),M['galv']),
@@ -357,21 +357,21 @@ def _add_hero_metal(M,rng,variant,detail):
     for i,(loc,L,W,rot,mat) in enumerate(sheets[:6 if detail==2 else 3]):
         if variant=='destroyed':
             loc=(loc[0]*1.07,loc[1]*1.08,loc[2]*.72)
-        _corrugated(f'TPG_CIN3_SHEET_{i}',loc,L,W,rot,mat,bend=.085 if i%2==0 else .060)
+        _corrugated(f'TPG_CIN4_SHEET_{i}',loc,L,W,rot,mat,bend=.085 if i%2==0 else .060)
 
 
 def _add_clutter(M,rng,detail):
     if detail!=2:
         return
     for i,loc in enumerate([(-2.22,-1.28,.04),(2.08,-1.10,.04),(-1.78,1.48,.045)]):
-        _bag(f'TPG_CIN3_BAG_{i}',loc,(.16,.11,.055),
+        _bag(f'TPG_CIN4_BAG_{i}',loc,(.16,.11,.055),
              (rng.uniform(-.4,.4),rng.uniform(-.4,.4),rng.uniform(0,math.tau)),M['black'])
 
     for i,loc in enumerate([(2.18,.50,.04),(-2.06,.59,.035),(.58,-2.02,.04),(1.58,1.42,.045),(-.22,2.02,.04)]):
-        cyl(f'TPG_CIN3_CAN_{i}',loc,.028,.098,M['white'] if i%2 else M['blue'],
+        cyl(f'TPG_CIN4_CAN_{i}',loc,.028,.098,M['white'] if i%2 else M['blue'],
             rot=(rng.uniform(-1.1,1.1),rng.uniform(-1.1,1.1),rng.uniform(0,math.tau)),verts=12)
 
-    cable('TPG_CIN3_BLUE_CABLE',
+    cable('TPG_CIN4_BLUE_CABLE',
           [(-1.30,-.96,.10),(-.66,-1.28,.08),(.02,-1.08,.12),(.68,-1.36,.065)],
           M['blue'],.011,1)
 
@@ -397,7 +397,7 @@ def quality_pass(variant='intact',detail=2):
     for o in bpy.context.scene.objects:
         ensure_uv(o)
 
-    bpy.context.scene['TPG_quality_pass']='cinematic-V3-photoPBR-v1'
+    bpy.context.scene['TPG_quality_pass']='cinematic-V4-photoPBR-v1'
     bpy.context.scene['TPG_nominal_footprint_m']='6.10 x 6.10'
-    bpy.context.scene['TPG_material_stack']='8K rubble/debris + 4K concrete/CMU/brick/rust + normals/RoughMet'
-    bpy.context.scene['TPG_coexistence_id']='TPG_Rubble_Pile_20ft_Cinematic_V3'
+    bpy.context.scene['TPG_material_stack']='8K hero albedo + 4K hero normals + 4K secondary albedo + BC7 DDS/mips'
+    bpy.context.scene['TPG_coexistence_id']='TPG_Rubble_Pile_20ft_Cinematic_V4'
