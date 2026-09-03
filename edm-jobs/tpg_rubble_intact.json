@@ -1,0 +1,6 @@
+{
+  "mode": "script",
+  "script": "edm-jobs/build_tpg_rubble_intact.py",
+  "output": "TPG_Rubble_Pile_20ft_V1.edm",
+  "save_blend": true
+}
