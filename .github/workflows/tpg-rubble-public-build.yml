@@ -48,13 +48,8 @@ jobs:
             if(-not(Test-Path $src)){throw "Missing source PBR map: $src"}
             & $env:TEXCONV_EXE -nologo -y -f $fmt -m 0 -w $size -h $size -o $dir $src
             if($LASTEXITCODE -ne 0){throw "texconv failed for $name"}
-            $upper=Join-Path $dir ($name + ".DDS")
-            $lower=Join-Path $dir ($name + ".dds")
-            if(Test-Path $upper){
-              if(Test-Path $lower){Remove-Item $lower -Force}
-              Rename-Item $upper ($name + ".dds")
-            }
-            if(-not(Test-Path $lower)){throw "DDS not produced: $lower"}
+            $dds=Join-Path $dir ($name + ".dds")
+            if(-not(Test-Path $dds)){throw "DDS not produced: $dds"}
             Remove-Item $src -Force
           }
 
