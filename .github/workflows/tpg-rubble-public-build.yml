@@ -1,4 +1,4 @@
-name: TPG Rubble Public EDM Build
+name: TPG Rubble Cinematic V3 EDM Build
 
 on:
   push:
@@ -8,15 +8,37 @@ on:
       - ".github/workflows/tpg-rubble-public-build.yml"
       - "edm-jobs/**"
       - "tools/dcs-edm/**"
+      - "tools/download_polyhaven_pbr.py"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  prepare-textures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download cinematic PBR texture set
+        run: |
+          python tools/download_polyhaven_pbr.py --out edm-artifacts/Textures
+          find edm-artifacts/Textures -maxdepth 1 -type f -printf "%f %s bytes\n" | sort
+
+      - name: Upload cinematic PBR texture set
+        uses: actions/upload-artifact@v4
+        with:
+          name: tpg-rubble-cinematic-v3-pbr
+          path: edm-artifacts/Textures/**
+          if-no-files-found: error
+          retention-days: 30
+
   export-rubble:
+    needs: prepare-textures
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -38,64 +60,74 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Download cinematic PBR textures
+        uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-cinematic-v3-pbr
+          path: edm-artifacts/Textures
+
       - name: Install Blender 4.1.1
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          $zip = Join-Path $env:RUNNER_TEMP "blender.zip"
-          $dir = Join-Path $env:RUNNER_TEMP "blender"
+          $ErrorActionPreference="Stop"
+          $zip=Join-Path $env:RUNNER_TEMP "blender.zip"
+          $dir=Join-Path $env:RUNNER_TEMP "blender"
           Invoke-WebRequest -Uri $env:BLENDER_URL -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath $dir -Force
-          $exe = Get-ChildItem -Path $dir -Filter blender.exe -Recurse | Select-Object -First 1
-          if (-not $exe) { throw "Blender executable not found." }
+          $exe=Get-ChildItem -Path $dir -Filter blender.exe -Recurse | Select-Object -First 1
+          if(-not $exe){throw "Blender executable not found"}
           "BLENDER_EXE=$($exe.FullName)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Install official ED EDM exporter
+      - name: Install official Eagle Dynamics EDM exporter
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          $src = Join-Path $env:RUNNER_TEMP "Blender-EDM-Exporter"
+          $ErrorActionPreference="Stop"
+          $src=Join-Path $env:RUNNER_TEMP "Blender-EDM-Exporter"
           git clone --filter=blob:none https://github.com/EagleDynamics/Blender-EDM-Exporter.git $src
           git -C $src checkout $env:ED_EXPORTER_COMMIT
-          $scripts = Join-Path $env:GITHUB_WORKSPACE ".edm-blender-scripts"
-          $addons = Join-Path $scripts "addons"
+          $scripts=Join-Path $env:GITHUB_WORKSPACE ".edm-blender-scripts"
+          $addons=Join-Path $scripts "addons"
           New-Item -ItemType Directory -Force -Path $addons | Out-Null
           Copy-Item -Recurse -Force (Join-Path $src "io_scene_edm") (Join-Path $addons "io_scene_edm")
-          $upper = Join-Path $addons "io_scene_edm\Materials"
-          $temp = Join-Path $addons "io_scene_edm\__materials_casefix"
-          $lower = Join-Path $addons "io_scene_edm\materials"
-          if (Test-Path $upper) {
+          $upper=Join-Path $addons "io_scene_edm\Materials"
+          $temp=Join-Path $addons "io_scene_edm\__materials_casefix"
+          $lower=Join-Path $addons "io_scene_edm\materials"
+          if(Test-Path $upper){
             Rename-Item $upper "__materials_casefix"
             Rename-Item $temp "materials"
           }
-          if (-not (Test-Path (Join-Path $lower "__init__.py"))) { throw "ED material package normalization failed." }
-          if (-not (Test-Path (Join-Path $addons "io_scene_edm\pyedm_311.pyd"))) { throw "Official pyedm_311.pyd missing." }
+          if(-not(Test-Path (Join-Path $lower "__init__.py"))){throw "ED material normalization failed"}
+          if(-not(Test-Path (Join-Path $addons "io_scene_edm\pyedm_311.pyd"))){throw "Official pyedm_311.pyd missing"}
           "BLENDER_USER_SCRIPTS=$scripts" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Export ${{ matrix.variant }}
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          $out = Join-Path $env:GITHUB_WORKSPACE "edm-artifacts"
-          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $ErrorActionPreference="Stop"
+          $out=Join-Path $env:GITHUB_WORKSPACE "edm-artifacts"
           & $env:BLENDER_EXE --background --python "tools/dcs-edm/export_job.py" -- --job "${{ matrix.job }}" --artifact-dir "$out"
-          if ($LASTEXITCODE -ne 0) { throw "EDM export failed for ${{ matrix.variant }}." }
-          $edm = Get-ChildItem $out -Filter *.edm -File
-          if (-not $edm) { throw "No EDM produced for ${{ matrix.variant }}." }
+          if($LASTEXITCODE -ne 0){throw "EDM export failed for ${{ matrix.variant }}"}
+          $edm=Get-ChildItem $out -Filter *.edm -File
+          if(-not $edm){throw "No EDM produced"}
           $edm | ForEach-Object { Write-Host "$($_.Name) $($_.Length) bytes" }
 
       - name: Upload ${{ matrix.variant }}
         uses: actions/upload-artifact@v4
         with:
-          name: tpg-rubble-hq500-v2-${{ matrix.variant }}
-          path: edm-artifacts/**
+          name: tpg-rubble-cinematic-v3-${{ matrix.variant }}
+          path: |
+            edm-artifacts/*.edm
+            edm-artifacts/*.blend
+            edm-artifacts/*.txt
+            edm-artifacts/*.json
+            edm-artifacts/Textures/**
           if-no-files-found: error
           retention-days: 30
 
   package-rubble:
     needs: export-rubble
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -103,26 +135,32 @@ jobs:
       - name: Download exported variants
         uses: actions/download-artifact@v4
         with:
-          pattern: tpg-rubble-hq500-v2-*
+          pattern: tpg-rubble-cinematic-v3-*
           path: edm-artifacts
           merge-multiple: true
 
-      - name: Package and validate coexistable DCS drop-in
+      - name: Download source PBR set
+        uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-cinematic-v3-pbr
+          path: edm-artifacts/Textures
+
+      - name: Package and validate DCS drop-in
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
+          $ErrorActionPreference="Stop"
           & "edm-jobs/package_tpg_rubble.ps1"
-          if (-not $?) { throw "Packaging failed." }
-          $zip = "edm-artifacts\TPG_Rubble_Pile_20ft_HQ500_V2_DCS_DropIn.zip"
-          if (-not (Test-Path $zip)) { throw "Final DCS ZIP missing." }
+          if(-not $?){throw "Packaging failed"}
+          $zip="edm-artifacts\TPG_Rubble_Pile_20ft_Cinematic_V3_DCS_DropIn.zip"
+          if(-not(Test-Path $zip)){throw "Final ZIP missing"}
           Get-Item $zip | ForEach-Object { Write-Host "FINAL PACKAGE: $($_.FullName) $($_.Length) bytes" }
 
       - name: Upload final DCS package
         uses: actions/upload-artifact@v4
         with:
-          name: TPG-Rubble-Pile-20ft-HQ500-V2-DCS-DropIn
+          name: TPG-Rubble-Pile-20ft-Cinematic-V3-DCS-DropIn
           path: |
-            edm-artifacts/TPG_Rubble_Pile_20ft_HQ500_V2_DCS_DropIn.zip
-            edm-artifacts/TPG_Rubble_Pile_20ft_HQ500_V2/**
+            edm-artifacts/TPG_Rubble_Pile_20ft_Cinematic_V3_DCS_DropIn.zip
+            edm-artifacts/TPG_Rubble_Pile_20ft_Cinematic_V3/**
           if-no-files-found: error
           retention-days: 30
