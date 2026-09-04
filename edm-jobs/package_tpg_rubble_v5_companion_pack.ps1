@@ -1,7 +1,7 @@
 param()
 $ErrorActionPreference='Stop'
 $root=Join-Path $env:GITHUB_WORKSPACE 'edm-artifacts'
-$asset='TPG_Rubble_Companion_Pack_Cinematic_V5'
+$asset='TPG_Rubble_Shape_Pack'
 $pkg=Join-Path $root $asset
 $shapes=Join-Path $pkg 'Shapes'
 $textures=Join-Path $pkg 'Textures'
@@ -9,13 +9,16 @@ $db=Join-Path $pkg 'Database'
 if(Test-Path $pkg){Remove-Item $pkg -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $shapes,$textures,$db | Out-Null
 
+# Visible/DCS-facing names are deliberately plain descriptive names.
+# Life is an initial gameplay tuning pass: larger rubble masses are tougher,
+# while no piece is intended to reliably protect against a direct 500 lb-class bomb.
 $defs=@(
-  @{Name='TPG_Rubble_SmallLow_Cinematic_V5A'; Display='TPG Rubble Small Low Cinematic V5A'},
-  @{Name='TPG_Rubble_Pushed_Cinematic_V5B'; Display='TPG Rubble Tractor-Pushed Cinematic V5B'},
-  @{Name='TPG_Rubble_Rectangular_Cinematic_V5C'; Display='TPG Rubble Rectangular Cinematic V5C'},
-  @{Name='TPG_Rubble_BuildingFace_Cinematic_V5D'; Display='TPG Rubble Building-Face Cinematic V5D'},
-  @{Name='TPG_Rubble_Ridge_Cinematic_V5E'; Display='TPG Rubble Long Ridge Cinematic V5E'},
-  @{Name='TPG_Rubble_MultiHump_Cinematic_V5F'; Display='TPG Rubble Multi-Hump Cinematic V5F'}
+  @{Name='TPG_Rubble_Small_Low';        Display='TPG Rubble Small Low';        Life=850},
+  @{Name='TPG_Rubble_Tractor_Pushed';   Display='TPG Rubble Tractor Pushed';   Life=1200},
+  @{Name='TPG_Rubble_Long_Rectangular'; Display='TPG Rubble Long Rectangular'; Life=1350},
+  @{Name='TPG_Rubble_Wall_Lean';        Display='TPG Rubble Wall Lean';        Life=1400},
+  @{Name='TPG_Rubble_Long_Ridge';       Display='TPG Rubble Long Ridge';       Life=1450},
+  @{Name='TPG_Rubble_Multi_Hump';       Display='TPG Rubble Multi Hump';       Life=1750}
 )
 
 foreach($d in $defs){
@@ -39,8 +42,7 @@ model={
   Set-Content -Path (Join-Path $shapes "$a.lods") -Value $lods -Encoding ASCII
 }
 
-# All six pieces intentionally share the exact Cinematic V5 texture/material family.
-# The textures are copied once for the whole pack, not duplicated per shape.
+# Shared exact Cinematic V5 texture family, copied once for all six shapes.
 $srcTex=Join-Path $root 'Textures'
 if(-not(Test-Path $srcTex)){throw 'Texture staging folder missing'}
 $dds=@(Get-ChildItem $srcTex -Filter *.dds -File)
@@ -48,21 +50,20 @@ if($dds.Count -lt 45){throw "Expected at least 45 shared Cinematic V5 DDS textur
 Copy-Item (Join-Path $srcTex '*.dds') $textures -Force
 
 $entry=@'
-declare_plugin("TPG Rubble Companion Pack Cinematic V5",
+declare_plugin("TPG Rubble Shape Pack",
 {
     installed=true,
     dirName=current_mod_path,
-    displayName=_("TPG Rubble Companion Pack Cinematic V5"),
-    version="5.1.0",
+    displayName=_("TPG Rubble Shape Pack"),
+    version="1.0.0",
     state="installed",
-    info=_("Six additional high-detail Cinematic V5 rubble silhouettes sharing the same PBR rubble, masonry, trash, round pipes and oxidized ribbed rebar")
+    info=_("Six high-detail rubble shapes using the Cinematic V5 material family, rigid full-scale debris and durable collision cover")
 })
 mount_vfs_model_path(current_mod_path.."/Shapes")
 mount_vfs_texture_path(current_mod_path.."/Textures")
-dofile(current_mod_path.."/Database/db_tpg_rubble_companion_pack_cinematic_v5.lua")
+dofile(current_mod_path.."/Database/db_tpg_rubble_shape_pack.lua")
 plugin_done()
 '@
-# PowerShell single-quoted here-string preserves ordinary double quotes exactly.
 $entry=$entry.Replace('\"','"')
 Set-Content -Path (Join-Path $pkg 'entry.lua') -Value $entry -Encoding UTF8
 
@@ -92,13 +93,14 @@ $dbText=$dbHead
 foreach($d in $defs){
   $a=$d.Name
   $display=$d.Display
+  $life=$d.Life
   $dbText += @"
 add_structure({
     Name="$a",
     DisplayName=_("$display"),
     ShapeName="$a",
     ShapeNameDestr="${a}_Destroyed",
-    Life=450,
+    Life=$life,
     Rate=100,
     category="Structures",
     SeaObject=false,
@@ -108,59 +110,62 @@ add_structure({
 
 "@
 }
-Set-Content -Path (Join-Path $db 'db_tpg_rubble_companion_pack_cinematic_v5.lua') -Value $dbText -Encoding UTF8
+Set-Content -Path (Join-Path $db 'db_tpg_rubble_shape_pack.lua') -Value $dbText -Encoding UTF8
 
 $readme=@'
-TPG Rubble Companion Pack Cinematic V5
-======================================
+TPG Rubble Shape Pack
+=====================
 
 INSTALL
-Copy TPG_Rubble_Companion_Pack_Cinematic_V5 directly into:
+Copy TPG_Rubble_Shape_Pack directly into:
 Saved Games\DCS\Mods\tech\
 
 MISSION EDITOR
 Static Objects -> Structures
 
-INCLUDED PIECES
-1. TPG Rubble Small Low Cinematic V5A
-   Approx. 12 x 12 ft. Low, compact rubble mound for filler/roadside/yard placement.
+INCLUDED
+- TPG Rubble Small Low
+- TPG Rubble Tractor Pushed
+- TPG Rubble Long Rectangular
+- TPG Rubble Wall Lean
+- TPG Rubble Long Ridge
+- TPG Rubble Multi Hump
 
-2. TPG Rubble Tractor-Pushed Cinematic V5B
-   Approx. 18 x 12 ft. Asymmetrical small-machine pushed pile with compressed front and dragged tail.
+GEOMETRY / SCALE
+This revision does NOT stretch visible rubble to create the alternate silhouettes.
+Bricks, hollow CMUs, pipes, rebar, slabs, beams, wood and trash retain their original
+Cinematic V5 dimensions and proportions. The pile is reshaped by changing the continuous
+rubble/fines envelope and rigidly relocating complete debris objects/assemblies.
 
-3. TPG Rubble Rectangular Cinematic V5C
-   Approx. 20 x 10 ft. Elongated, somewhat rectangular rubble bed for lots, curbs and structure edges.
+WALL LEAN
+The wall-contact piece has a straight ~10 ft wall edge at its placement origin and a much
+shorter tapered outward toe. Its top-view footprint is intentionally trapezoidal rather
+than square, making the wall-facing direction visually obvious during Mission Editor placement.
 
-4. TPG Rubble Building-Face Cinematic V5D
-   Approx. 10 ft wall section. Origin is on the tall rough face so it can be placed flush against a building;
-   the rubble falls/slopes outward from that near-vertical contact face.
-
-5. TPG Rubble Long Ridge Cinematic V5E
-   Approx. 24 x 8 ft. Long narrow windrow/ridge with a slightly irregular spine.
-
-6. TPG Rubble Multi-Hump Cinematic V5F
-   Approx. 22 x 18 ft. Three connected collapse lobes with lower saddles between them.
-
-SHARED CINEMATIC V5 ART LANGUAGE
-- Exact same Cinematic V5 PBR rubble/fines, concrete debris, brick and CMU texture family.
-- Exact same round dirty/oxidized pipe treatment.
-- Exact same warmer oxidized ribbed rebar treatment.
-- Same slabs, masonry, metal, wood, wire and construction-trash vocabulary.
-- Same no-spoke/no-radial-fan mound technology.
-- Shared textures are stored only once for all six pieces.
-- Each piece has its own intact EDM, destroyed EDM, LOD1, LOD2, .lods file and unique DCS database identity.
+DURABILITY / COVER
+The database assigns real static-object Life values and the EDMs include collision geometry.
+Initial Life tuning ranges from 850 for the small pile to 1750 for the largest multi-hump pile.
+The intended gameplay target is that larger pieces can absorb roughly several direct tank hits
+and about 5-7 artillery impacts while still acting as physical cover. Exact hit counts vary with
+weapon, impact point, fuze and blast calculation in DCS, so runtime combat testing is authoritative.
+A direct 500 lb-class bomb is NOT intended to provide reliable protection; at most the rubble should
+offer limited mitigation depending on stand-off/impact geometry.
 
 COEXISTENCE
-This companion pack is a separate plugin/folder/database identity and does not replace the original
-TPG Rubble Pile 20ft Cinematic V5. The shared TPG_CIN5 texture filenames are intentionally byte-identical
-with the original V5 material family, so either mounted copy resolves to the same artwork.
+This is a new clean-name pack with unique DCS identities. It can coexist with:
+- TPG Rubble Pile 20ft Cinematic V5
+- the earlier Cinematic V5 Companion Pack
+
+SHARED ART
+Uses the same Cinematic V5 PBR rubble/fines, concrete, brick, CMU, round dirty pipes,
+oxidized ribbed rebar, metal, wood and construction-trash texture/material family.
 
 EXPORT
 Built with Blender 4.1.1 and the official Eagle Dynamics Blender EDM exporter.
 '@
 Set-Content -Path (Join-Path $pkg 'README.txt') -Value $readme -Encoding UTF8
 
-$zip=Join-Path $root 'TPG_Rubble_Companion_Pack_Cinematic_V5_DCS_DropIn.zip'
+$zip=Join-Path $root 'TPG_Rubble_Shape_Pack_DCS_DropIn.zip'
 if(Test-Path $zip){Remove-Item $zip -Force}
 Compress-Archive -Path $pkg -DestinationPath $zip -CompressionLevel Optimal
 if(-not(Test-Path $zip)){throw 'Package ZIP was not created'}
