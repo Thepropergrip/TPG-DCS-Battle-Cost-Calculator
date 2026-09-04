@@ -1,0 +1,240 @@
+name: TPG Rubble Cinematic V5 Art Fix Build
+
+on:
+  push:
+    branches:
+      - tpg-rubble-public-build
+    paths:
+      - ".github/workflows/tpg-rubble-v5-build.yml"
+      - "edm-jobs/tpg_rubble_v5_patch.py"
+      - "edm-jobs/build_tpg_rubble_v5_*.py"
+      - "edm-jobs/tpg_rubble_v5_*.json"
+      - "edm-jobs/package_tpg_rubble_v5.ps1"
+      - "edm-jobs/validate_tpg_rubble_v5_package.ps1"
+      - "tools/download_polyhaven_pbr_v5.py"
+      - "tools/dcs-edm/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-textures:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download V5 source cinematic PBR maps
+        shell: pwsh
+        run: |
+          python tools/download_polyhaven_pbr_v5.py --out edm-artifacts/Textures
+          if($LASTEXITCODE -ne 0){throw "Poly Haven download failed"}
+
+      - name: Install DirectXTex texconv
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          $exe=Join-Path $env:RUNNER_TEMP "texconv.exe"
+          Invoke-WebRequest -Uri "https://github.com/microsoft/DirectXTex/releases/download/may2026/texconv.exe" -OutFile $exe
+          if(-not(Test-Path $exe)){throw "texconv.exe missing"}
+          "TEXCONV_EXE=$exe" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Convert V5 photo maps to optimized BC7 DDS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          $dir=Join-Path $env:GITHUB_WORKSPACE "edm-artifacts\Textures"
+          function Convert-Map([string]$name,[string]$fmt,[int]$size){
+            $src=Join-Path $dir ($name + ".png")
+            if(-not(Test-Path $src)){throw "Missing source PBR map: $src"}
+            & $env:TEXCONV_EXE -nologo -y -f $fmt -m 0 -w $size -h $size -o $dir $src
+            if($LASTEXITCODE -ne 0){throw "texconv failed for $name"}
+            $dds=Join-Path $dir ($name + ".dds")
+            if(-not(Test-Path $dds)){throw "DDS not produced: $dds"}
+            Remove-Item $src -Force
+          }
+          foreach($p in @("TPG_CIN5_RubbleBase","TPG_CIN5_ConcreteDebris")){
+            Convert-Map ($p+"_diff") "BC7_UNORM_SRGB" 8192
+            Convert-Map ($p+"_nor_gl") "BC7_UNORM" 4096
+            Convert-Map ($p+"_arm") "BC7_UNORM" 2048
+          }
+          foreach($p in @("TPG_CIN5_RoughConcrete","TPG_CIN5_CMU","TPG_CIN5_Brick","TPG_CIN5_RustMetal")){
+            Convert-Map ($p+"_diff") "BC7_UNORM_SRGB" 4096
+            Convert-Map ($p+"_nor_gl") "BC7_UNORM" 2048
+            Convert-Map ($p+"_arm") "BC7_UNORM" 2048
+          }
+          $png=@(Get-ChildItem $dir -Filter *.png -File)
+          if($png.Count -ne 0){throw "Unconverted PNG sources remain: $($png.Count)"}
+          Get-ChildItem $dir -Filter *.dds -File | Sort-Object Name | ForEach-Object { Write-Host "$($_.Name) $($_.Length) bytes" }
+
+      - name: Upload compact V5 photo PBR set
+        uses: actions/upload-artifact@v4
+        with:
+          name: tpg-rubble-v5-photo-pbr
+          path: |
+            edm-artifacts/Textures/*.dds
+            edm-artifacts/Textures/TPG_CIN5_PolyHaven_manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  export-rubble:
+    needs: prepare-textures
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: intact
+            job: edm-jobs/tpg_rubble_v5_intact.json
+          - variant: lod1
+            job: edm-jobs/tpg_rubble_v5_lod1.json
+          - variant: lod2
+            job: edm-jobs/tpg_rubble_v5_lod2.json
+          - variant: destroyed
+            job: edm-jobs/tpg_rubble_v5_destroyed.json
+    env:
+      BLENDER_VERSION: "4.1.1"
+      BLENDER_URL: "https://download.blender.org/release/Blender4.1/blender-4.1.1-windows-x64.zip"
+      ED_EXPORTER_COMMIT: "5f03ba70ec96ca6ce68028eabc786ecd97f9cf93"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download compact V5 photo PBR set
+        uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-v5-photo-pbr
+          path: edm-artifacts/Textures
+
+      - name: Install Blender 4.1.1
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          $zip=Join-Path $env:RUNNER_TEMP "blender.zip"
+          $dir=Join-Path $env:RUNNER_TEMP "blender"
+          Invoke-WebRequest -Uri $env:BLENDER_URL -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
+          $exe=Get-ChildItem -Path $dir -Filter blender.exe -Recurse | Select-Object -First 1
+          if(-not $exe){throw "Blender executable not found"}
+          "BLENDER_EXE=$($exe.FullName)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install official Eagle Dynamics EDM exporter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          $src=Join-Path $env:RUNNER_TEMP "Blender-EDM-Exporter"
+          git clone --filter=blob:none https://github.com/EagleDynamics/Blender-EDM-Exporter.git $src
+          git -C $src checkout $env:ED_EXPORTER_COMMIT
+          $scripts=Join-Path $env:GITHUB_WORKSPACE ".edm-blender-scripts"
+          $addons=Join-Path $scripts "addons"
+          New-Item -ItemType Directory -Force -Path $addons | Out-Null
+          Copy-Item -Recurse -Force (Join-Path $src "io_scene_edm") (Join-Path $addons "io_scene_edm")
+          $upper=Join-Path $addons "io_scene_edm\Materials"
+          $temp=Join-Path $addons "io_scene_edm\__materials_casefix"
+          $lower=Join-Path $addons "io_scene_edm\materials"
+          if(Test-Path $upper){Rename-Item $upper "__materials_casefix"; Rename-Item $temp "materials"}
+          if(-not(Test-Path (Join-Path $lower "__init__.py"))){throw "ED material normalization failed"}
+          if(-not(Test-Path (Join-Path $addons "io_scene_edm\pyedm_311.pyd"))){throw "Official pyedm_311.pyd missing"}
+          "BLENDER_USER_SCRIPTS=$scripts" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install DirectXTex texconv
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          $exe=Join-Path $env:RUNNER_TEMP "texconv.exe"
+          Invoke-WebRequest -Uri "https://github.com/microsoft/DirectXTex/releases/download/may2026/texconv.exe" -OutFile $exe
+          if(-not(Test-Path $exe)){throw "texconv.exe missing"}
+          "TEXCONV_EXE=$exe" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Export ${{ matrix.variant }} V5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          $out=Join-Path $env:GITHUB_WORKSPACE "edm-artifacts"
+          & $env:BLENDER_EXE --background --python "tools/dcs-edm/export_job.py" -- --job "${{ matrix.job }}" --artifact-dir "$out"
+          if($LASTEXITCODE -ne 0){throw "EDM export failed for ${{ matrix.variant }}"}
+          $edm=Get-ChildItem $out -Filter *.edm -File
+          if(-not $edm){throw "No EDM produced"}
+          $edm | ForEach-Object { Write-Host "$($_.Name) $($_.Length) bytes" }
+
+      - name: Upload EDM ${{ matrix.variant }} V5
+        uses: actions/upload-artifact@v4
+        with:
+          name: tpg-rubble-v5-edm-${{ matrix.variant }}
+          path: edm-artifacts/*.edm
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload generated V5 procedural DDS textures
+        if: matrix.variant == 'intact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tpg-rubble-v5-proc-textures
+          path: |
+            edm-artifacts/Textures/*.dds
+            !edm-artifacts/Textures/TPG_CIN5_RubbleBase_*.dds
+            !edm-artifacts/Textures/TPG_CIN5_ConcreteDebris_*.dds
+            !edm-artifacts/Textures/TPG_CIN5_RoughConcrete_*.dds
+            !edm-artifacts/Textures/TPG_CIN5_CMU_*.dds
+            !edm-artifacts/Textures/TPG_CIN5_Brick_*.dds
+            !edm-artifacts/Textures/TPG_CIN5_RustMetal_*.dds
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  package-rubble:
+    needs: export-rubble
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download V5 EDMs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tpg-rubble-v5-edm-*
+          path: edm-artifacts
+          merge-multiple: true
+
+      - name: Download V5 photo PBR DDS
+        uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-v5-photo-pbr
+          path: edm-artifacts/Textures
+
+      - name: Download V5 procedural DDS
+        uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-v5-proc-textures
+          path: edm-artifacts/Textures
+
+      - name: Package and validate clean V5 DCS drop-in
+        shell: pwsh
+        run: |
+          $ErrorActionPreference="Stop"
+          & "edm-jobs/package_tpg_rubble_v5.ps1"
+          if(-not $?){throw "Packaging failed"}
+          $zip="edm-artifacts\TPG_Rubble_Pile_20ft_Cinematic_V5_DCS_DropIn.zip"
+          if(-not(Test-Path $zip)){throw "Final ZIP missing"}
+          $hash=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "edm-artifacts\TPG_Rubble_Pile_20ft_Cinematic_V5_SHA256.txt" -Value "$hash  TPG_Rubble_Pile_20ft_Cinematic_V5_DCS_DropIn.zip" -Encoding ASCII
+          Get-Item $zip | ForEach-Object { Write-Host "FINAL PACKAGE: $($_.FullName) $($_.Length) bytes" }
+          Write-Host "SHA256: $hash"
+
+      - name: Upload final V5 DCS drop-in only
+        uses: actions/upload-artifact@v4
+        with:
+          name: TPG-Rubble-Pile-20ft-Cinematic-V5-DCS-DropIn
+          path: |
+            edm-artifacts/TPG_Rubble_Pile_20ft_Cinematic_V5_DCS_DropIn.zip
+            edm-artifacts/TPG_Rubble_Pile_20ft_Cinematic_V5_SHA256.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
