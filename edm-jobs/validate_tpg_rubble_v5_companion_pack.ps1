@@ -61,11 +61,18 @@ try {
   if(-not(Test-Path $dbPath)){throw 'Companion pack database file missing'}
   $db=Get-Content $dbPath -Raw
   foreach($a in $assets){
-    if($db -notmatch [regex]::Escape("Name=\"$a\"")){throw "Database missing unique Name for $a"}
-    if($db -notmatch [regex]::Escape("ShapeName=\"$a\"")){throw "Database missing ShapeName for $a"}
-    if($db -notmatch [regex]::Escape("ShapeNameDestr=\"${a}_Destroyed\"")){throw "Database missing destroyed ShapeName for $a"}
+    $nameNeedle='Name="' + $a + '"'
+    $shapeNeedle='ShapeName="' + $a + '"'
+    $destrNeedle='ShapeNameDestr="' + $a + '_Destroyed"'
+    # remove literal backslash characters from the PowerShell string construction above
+    $nameNeedle=$nameNeedle.Replace('\','')
+    $shapeNeedle=$shapeNeedle.Replace('\','')
+    $destrNeedle=$destrNeedle.Replace('\','')
+    if(-not $db.Contains($nameNeedle)){throw "Database missing unique Name for $a"}
+    if(-not $db.Contains($shapeNeedle)){throw "Database missing ShapeName for $a"}
+    if(-not $db.Contains($destrNeedle)){throw "Database missing destroyed ShapeName for $a"}
   }
-  if($db -match 'Name="TPG_Rubble_Pile_20ft_Cinematic_V5"'){throw 'Database collides with original Cinematic V5 Name'}
+  if($db.Contains('Name="TPG_Rubble_Pile_20ft_Cinematic_V5"'.Replace('\',''))){throw 'Database collides with original Cinematic V5 Name'}
 
   Write-Host 'TPG_RUBBLE_V5_COMPANION_PACK_VALIDATION_SUCCESS'
 }
