@@ -12,6 +12,7 @@ if str(_THIS_DIR) not in sys.path:
 import tpg_rubble_v5_patch as V5
 
 V5.apply()
+import tpg_rubble_common as C
 from tpg_rubble_common import build
 import tpg_rubble_quality_pass as Q
 
@@ -136,21 +137,17 @@ def _is_deformable(obj):
 
 def _assembly_key(name):
     """Keep multipart real-world items together while repositioning the pile."""
-    # Pipe + its two dark end-hole meshes.
     if "_HOLE_" in name:
         return "pipe:" + name.split("_HOLE_", 1)[0]
 
-    # Hollow CMU is made from five cubes; preserve the full block proportions.
     m = re.match(r"(.+CMU_\d+)(?:_\d+)?$", name)
     if m:
         return "cmu:" + m.group(1)
 
-    # I-beams are three pieces.
     m = re.match(r"(.+IBEAM_\d+)(?:_\d+)?$", name)
     if m:
         return "ibeam:" + m.group(1)
 
-    # A fractured slab and all rebar growing from that slab move as one assembly.
     m = re.search(r"FRACTURED_SLAB_(\d+)", name)
     if m:
         return "slab:" + m.group(1)
@@ -158,12 +155,10 @@ def _assembly_key(name):
     if m:
         return "slab:" + m.group(1)
 
-    # Rebar cages preserve their spacing instead of being squeezed into the footprint.
     m = re.search(r"CAGE_(\d+)_", name)
     if m:
         return "cage:" + m.group(1)
 
-    # Bent bars are emitted as several straight segments; keep each bent bar rigid.
     m = re.match(r"(.+LOOSE_BAR_\d+)_\d+$", name)
     if m:
         return "bar:" + m.group(1)
@@ -207,16 +202,11 @@ def _move_rigid_assemblies(key):
         else:
             groups.setdefault(_assembly_key(obj.name), []).append(obj)
 
-    # Continuous fines/collision envelope can change shape.
     for obj in deformable:
         _warp_deformable(obj, key)
         if "SOLID_RUBBLE_CORE" in obj.name:
-            # Re-project only the continuous rubble surface after reshaping so the
-            # photo PBR texture keeps its physical scale and does not look stretched.
             Q._box_uv(obj, .55)
 
-    # Every visible debris assembly is translated rigidly. No vertex scaling,
-    # no brick stretching, no oval pipes, no flattened CMUs/rebar/slabs.
     for objs in groups.values():
         pts = []
         for obj in objs:
@@ -233,6 +223,92 @@ def _move_rigid_assemblies(key):
             obj.data.update()
 
 
+def _clear_scene():
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete(use_global=False)
+    for mesh in list(bpy.data.meshes):
+        if mesh.users == 0:
+            bpy.data.meshes.remove(mesh)
+
+
+def _collision_box(name, loc, dims, rot=(0.0, 0.0, 0.0), bevel=0.10):
+    return C.cube(name, loc, dims, None, rot=rot, bevel=bevel, coll=True)
+
+
+def _collision_wedge(name, wall_width=3.05, depth=1.68, wall_height=1.45, toe_width=2.10, toe_height=0.26):
+    """Simple trapezoidal wall-lean collision hull.
+
+    Y=0 is the wall-contact edge. The hull narrows and drops toward +Y, so it
+    can overlap a scenery building while remaining terrain-referenced.
+    """
+    hw0 = wall_width * 0.5
+    hw1 = toe_width * 0.5
+    z0 = -0.08
+    verts = [
+        (-hw0, 0.00, z0), ( hw0, 0.00, z0),
+        (-hw1, depth, z0), ( hw1, depth, z0),
+        (-hw0, 0.00, wall_height), ( hw0, 0.00, wall_height),
+        (-hw1, depth, toe_height), ( hw1, depth, toe_height),
+    ]
+    faces = [
+        (0, 1, 3, 2),
+        (4, 6, 7, 5),
+        (0, 4, 5, 1),
+        (2, 3, 7, 6),
+        (0, 2, 6, 4),
+        (1, 5, 7, 3),
+    ]
+    mesh = bpy.data.meshes.new(name + '_mesh')
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    C.get_edm_props(obj).SPECIAL_TYPE = 'COLLISION_SHELL'
+    return obj
+
+
+def _build_collision_shell(key):
+    """Build simplified physical cover geometry independent of visible debris.
+
+    These hulls deliberately ignore individual pipes/rebar/bricks. They provide
+    stable projectile/vehicle blocking without letting high visual fragments drive
+    placement or surface-contact behavior.
+    """
+    _clear_scene()
+
+    if key == 'smalllow':
+        _collision_box('TPG_RUBBLE_COLL_SMALL_LOW', (0.0, 0.0, 0.27), (3.15, 3.05, 0.70), bevel=0.22)
+
+    elif key == 'pushed':
+        _collision_box('TPG_RUBBLE_COLL_PUSHED_TAIL', (-1.25, 0.0, 0.22), (2.75, 2.35, 0.54), rot=(0, 0, -0.05), bevel=0.16)
+        _collision_box('TPG_RUBBLE_COLL_PUSHED_MID', (0.65, 0.02, 0.38), (2.55, 2.50, 0.82), rot=(0, 0, 0.04), bevel=0.18)
+        _collision_box('TPG_RUBBLE_COLL_PUSHED_FACE', (2.00, 0.00, 0.52), (1.15, 2.35, 1.08), bevel=0.14)
+
+    elif key == 'rectangular':
+        _collision_box('TPG_RUBBLE_COLL_RECT_CENTER', (0.0, 0.0, 0.31), (5.65, 2.40, 0.72), bevel=0.18)
+        _collision_box('TPG_RUBBLE_COLL_RECT_CROWN', (-0.35, 0.05, 0.58), (3.65, 1.85, 0.42), rot=(0, 0, 0.03), bevel=0.14)
+
+    elif key == 'buildingface':
+        _collision_wedge('TPG_RUBBLE_COLL_WALL_LEAN')
+
+    elif key == 'ridge':
+        _collision_box('TPG_RUBBLE_COLL_RIDGE_LEFT', (-2.25, -0.05, 0.29), (2.85, 1.75, 0.68), rot=(0, 0, -0.06), bevel=0.16)
+        _collision_box('TPG_RUBBLE_COLL_RIDGE_MID', (0.0, 0.08, 0.38), (2.95, 1.85, 0.82), rot=(0, 0, 0.04), bevel=0.16)
+        _collision_box('TPG_RUBBLE_COLL_RIDGE_RIGHT', (2.30, -0.03, 0.28), (2.90, 1.70, 0.66), rot=(0, 0, -0.03), bevel=0.16)
+
+    elif key == 'multihump':
+        _collision_box('TPG_RUBBLE_COLL_HUMP_A', (-1.45, -0.15, 0.52), (3.05, 2.65, 1.08), rot=(0, 0, 0.12), bevel=0.24)
+        _collision_box('TPG_RUBBLE_COLL_HUMP_B', (1.25, 0.45, 0.58), (3.10, 2.75, 1.18), rot=(0, 0, -0.10), bevel=0.24)
+        _collision_box('TPG_RUBBLE_COLL_HUMP_C', (0.05, -1.35, 0.40), (2.65, 2.25, 0.82), rot=(0, 0, 0.06), bevel=0.20)
+
+    else:
+        raise RuntimeError(f'Unknown collision shape: {key}')
+
+    for obj in bpy.context.scene.objects:
+        if obj.type == 'MESH':
+            obj.name = f'TPG_RUBBLE_COLLISION_{key.upper()}_{obj.name}'[:63]
+
+
 def _rename_scene_objects(key):
     tag = key.upper()
     for obj in bpy.context.scene.objects:
@@ -246,16 +322,26 @@ def main():
     detail = int(os.environ.get("TPG_PACK_DETAIL", "2"))
     if key not in SHAPES:
         raise RuntimeError(f"TPG_PACK_SHAPE must be one of {sorted(SHAPES)}; got {key!r}")
-    if state not in ("intact", "destroyed"):
-        raise RuntimeError(f"TPG_PACK_STATE must be intact/destroyed; got {state!r}")
+    if state not in ("intact", "destroyed", "collision"):
+        raise RuntimeError(f"TPG_PACK_STATE must be intact/destroyed/collision; got {state!r}")
     if detail not in (0, 1, 2):
         raise RuntimeError(f"TPG_PACK_DETAIL must be 0,1,2; got {detail}")
+
+    spec = SHAPES[key]
+
+    if state == 'collision':
+        _build_collision_shell(key)
+        bpy.context.scene["TPG_asset"] = spec["asset"] + '_Collision'
+        bpy.context.scene["TPG_pack"] = "TPG Rubble Shape Pack"
+        bpy.context.scene["TPG_pack_shape"] = key
+        bpy.context.scene["TPG_pack_state"] = 'collision'
+        bpy.context.scene["TPG_collision_method"] = "dedicated simplified physical cover hull"
+        bpy.context.scene["TPG_positioning"] = "terrain lock handled by database ONLYHEIGTH"
+        return
 
     source_variant = "destroyed" if state == "destroyed" else "intact"
 
     # Keep source objects unbatched until after the rigid-layout transform.
-    # Otherwise one material batch can contain hundreds of separate bricks/chunks,
-    # forcing a whole-batch warp that visibly stretches the debris.
     original_batch = Q._batch_visual_by_material
     Q._batch_visual_by_material = lambda: None
     try:
@@ -266,11 +352,9 @@ def main():
     finally:
         Q._batch_visual_by_material = original_batch
 
-    # Restore V5 draw-call batching only after all debris is correctly repositioned.
     original_batch()
     _rename_scene_objects(key)
 
-    spec = SHAPES[key]
     bpy.context.scene["TPG_asset"] = spec["asset"]
     bpy.context.scene["TPG_pack"] = "TPG Rubble Shape Pack"
     bpy.context.scene["TPG_pack_shape"] = key
