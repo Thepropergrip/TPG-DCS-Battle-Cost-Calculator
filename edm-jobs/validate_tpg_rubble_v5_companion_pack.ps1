@@ -44,7 +44,9 @@ try {
     }
     $cf=Join-Path $root ("Shapes\${a}_Collision.edm")
     if(-not(Test-Path $cf)){throw "Missing dedicated collision EDM: ${a}_Collision.edm"}
-    if((Get-Item $cf).Length -lt 4096){throw "Suspiciously small collision EDM: ${a}_Collision.edm"}
+    # Dedicated collision-only EDMs are intentionally tiny: a valid simple shell can be
+    # only a few hundred bytes. Keep a low corruption guard while allowing lean convex shells.
+    if((Get-Item $cf).Length -lt 256){throw "Suspiciously small collision EDM: ${a}_Collision.edm"}
 
     $lod=Join-Path $root ("Shapes\$a.lods")
     if(-not(Test-Path $lod)){throw "Missing LODS file: $a.lods"}
