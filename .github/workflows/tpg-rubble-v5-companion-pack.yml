@@ -147,7 +147,9 @@ jobs:
             @{ state='destroyed'; detail=2; suffix='_Destroyed'; min=16384 },
             @{ state='intact'; detail=1; suffix='_LOD1'; min=16384 },
             @{ state='intact'; detail=0; suffix='_LOD2'; min=16384 },
-            @{ state='collision'; detail=0; suffix='_Collision'; min=4096 }
+            # Dedicated ED collision shells contain only a few convex triangles and are
+            # legitimately a few hundred bytes; 256 B still catches empty/corrupt output.
+            @{ state='collision'; detail=0; suffix='_Collision'; min=256 }
           )
           foreach($p in $passes){
             $env:TPG_PACK_STATE=$p.state
