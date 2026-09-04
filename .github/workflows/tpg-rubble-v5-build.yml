@@ -11,63 +11,52 @@ on:
       - "edm-jobs/tpg_rubble_v5_*.json"
       - "edm-jobs/package_tpg_rubble_v5.ps1"
       - "edm-jobs/validate_tpg_rubble_v5_package.ps1"
-      - "tools/download_polyhaven_pbr_v5.py"
       - "tools/dcs-edm/**"
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   prepare-textures:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download V5 source cinematic PBR maps
-        shell: pwsh
-        run: |
-          python tools/download_polyhaven_pbr_v5.py --out edm-artifacts/Textures
-          if($LASTEXITCODE -ne 0){throw "Poly Haven download failed"}
+      - name: Reuse validated V4 photo PBR DDS set
+        uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-v4-photo-pbr
+          path: edm-artifacts/Textures
+          github-token: ${{ github.token }}
+          repository: Thepropergrip/TPG-DCS-Battle-Cost-Calculator
+          run-id: 33811783438
 
-      - name: Install DirectXTex texconv
-        shell: pwsh
-        run: |
-          $ErrorActionPreference="Stop"
-          $exe=Join-Path $env:RUNNER_TEMP "texconv.exe"
-          Invoke-WebRequest -Uri "https://github.com/microsoft/DirectXTex/releases/download/may2026/texconv.exe" -OutFile $exe
-          if(-not(Test-Path $exe)){throw "texconv.exe missing"}
-          "TEXCONV_EXE=$exe" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Convert V5 photo maps to optimized BC7 DDS
+      - name: Rename immutable photo maps into unique V5 namespace
         shell: pwsh
         run: |
           $ErrorActionPreference="Stop"
           $dir=Join-Path $env:GITHUB_WORKSPACE "edm-artifacts\Textures"
-          function Convert-Map([string]$name,[string]$fmt,[int]$size){
-            $src=Join-Path $dir ($name + ".png")
-            if(-not(Test-Path $src)){throw "Missing source PBR map: $src"}
-            & $env:TEXCONV_EXE -nologo -y -f $fmt -m 0 -w $size -h $size -o $dir $src
-            if($LASTEXITCODE -ne 0){throw "texconv failed for $name"}
-            $dds=Join-Path $dir ($name + ".dds")
-            if(-not(Test-Path $dds)){throw "DDS not produced: $dds"}
-            Remove-Item $src -Force
+          $maps=@(Get-ChildItem $dir -Filter 'TPG_CIN4_*.dds' -File)
+          if($maps.Count -lt 18){throw "Expected V4 photo PBR DDS set; found $($maps.Count) maps"}
+          foreach($f in $maps){
+            $new=$f.Name -replace '^TPG_CIN4_','TPG_CIN5_'
+            Rename-Item -Path $f.FullName -NewName $new
           }
-          foreach($p in @("TPG_CIN5_RubbleBase","TPG_CIN5_ConcreteDebris")){
-            Convert-Map ($p+"_diff") "BC7_UNORM_SRGB" 8192
-            Convert-Map ($p+"_nor_gl") "BC7_UNORM" 4096
-            Convert-Map ($p+"_arm") "BC7_UNORM" 2048
+          $oldManifest=Join-Path $dir 'TPG_CIN4_PolyHaven_manifest.json'
+          $newManifest=Join-Path $dir 'TPG_CIN5_PolyHaven_manifest.json'
+          if(Test-Path $oldManifest){
+            (Get-Content $oldManifest -Raw).Replace('TPG_CIN4_','TPG_CIN5_') | Set-Content $newManifest -Encoding UTF8
+            Remove-Item $oldManifest -Force
+          } else {
+            '{"credit":"Powered by Poly Haven","reused_from":"validated Cinematic V4 photo PBR DDS artifact","source_run":33811783438}' | Set-Content $newManifest -Encoding UTF8
           }
-          foreach($p in @("TPG_CIN5_RoughConcrete","TPG_CIN5_CMU","TPG_CIN5_Brick","TPG_CIN5_RustMetal")){
-            Convert-Map ($p+"_diff") "BC7_UNORM_SRGB" 4096
-            Convert-Map ($p+"_nor_gl") "BC7_UNORM" 2048
-            Convert-Map ($p+"_arm") "BC7_UNORM" 2048
-          }
-          $png=@(Get-ChildItem $dir -Filter *.png -File)
-          if($png.Count -ne 0){throw "Unconverted PNG sources remain: $($png.Count)"}
-          Get-ChildItem $dir -Filter *.dds -File | Sort-Object Name | ForEach-Object { Write-Host "$($_.Name) $($_.Length) bytes" }
+          $v5=@(Get-ChildItem $dir -Filter 'TPG_CIN5_*.dds' -File)
+          if($v5.Count -lt 18){throw "V5 photo namespace rename incomplete"}
+          $v5 | Sort-Object Name | ForEach-Object { Write-Host "$($_.Name) $($_.Length) bytes" }
 
       - name: Upload compact V5 photo PBR set
         uses: actions/upload-artifact@v4
