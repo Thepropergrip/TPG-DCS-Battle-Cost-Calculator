@@ -1,4 +1,4 @@
-name: TPG Rubble Cinematic V5 Companion Pack Build
+name: TPG Rubble Shape Pack Build
 
 on:
   push:
@@ -58,12 +58,11 @@ jobs:
             'TPG_CIN5_RebarOxidized.dds','TPG_CIN5_DirtyPipe.dds')){
             if(-not(Test-Path (Join-Path $dir $name))){throw "Missing shared V5 texture: $name"}
           }
-          Write-Host "Shared V5 texture family ready: $($dds.Count) DDS files"
 
-      - name: Upload one shared texture set for all six shapes
+      - name: Upload one shared texture set
         uses: actions/upload-artifact@v4
         with:
-          name: tpg-rubble-v5-companion-textures
+          name: tpg-rubble-shape-pack-textures
           path: edm-artifacts/Textures/*.dds
           if-no-files-found: error
           compression-level: 0
@@ -79,17 +78,17 @@ jobs:
       matrix:
         include:
           - key: smalllow
-            base: TPG_Rubble_SmallLow_Cinematic_V5A
+            base: TPG_Rubble_Small_Low
           - key: pushed
-            base: TPG_Rubble_Pushed_Cinematic_V5B
+            base: TPG_Rubble_Tractor_Pushed
           - key: rectangular
-            base: TPG_Rubble_Rectangular_Cinematic_V5C
+            base: TPG_Rubble_Long_Rectangular
           - key: buildingface
-            base: TPG_Rubble_BuildingFace_Cinematic_V5D
+            base: TPG_Rubble_Wall_Lean
           - key: ridge
-            base: TPG_Rubble_Ridge_Cinematic_V5E
+            base: TPG_Rubble_Long_Ridge
           - key: multihump
-            base: TPG_Rubble_MultiHump_Cinematic_V5F
+            base: TPG_Rubble_Multi_Hump
     env:
       BLENDER_VERSION: "4.1.1"
       BLENDER_URL: "https://download.blender.org/release/Blender4.1/blender-4.1.1-windows-x64.zip"
@@ -99,10 +98,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download shared V5 companion textures
+      - name: Download shared V5 textures
         uses: actions/download-artifact@v4
         with:
-          name: tpg-rubble-v5-companion-textures
+          name: tpg-rubble-shape-pack-textures
           path: edm-artifacts/Textures
 
       - name: Install Blender 4.1.1
@@ -136,7 +135,7 @@ jobs:
           if(-not(Test-Path (Join-Path $addons "io_scene_edm\pyedm_311.pyd"))){throw "Official pyedm_311.pyd missing"}
           "BLENDER_USER_SCRIPTS=$scripts" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Export intact, destroyed, LOD1 and LOD2 for ${{ matrix.key }}
+      - name: Export four EDMs for ${{ matrix.key }}
         shell: pwsh
         run: |
           $ErrorActionPreference="Stop"
@@ -160,7 +159,6 @@ jobs:
               save_blend=$false
             } | ConvertTo-Json
             Set-Content -Path $jobPath -Value $job -Encoding UTF8
-            Write-Host "EXPORT $($p.state) detail=$($p.detail) -> $base$($p.suffix).edm"
             & $env:BLENDER_EXE --background --python "tools/dcs-edm/export_job.py" -- --job "$jobPath" --artifact-dir "$outDir"
             if($LASTEXITCODE -ne 0){throw "EDM export failed for ${{ matrix.key }} $($p.state) detail $($p.detail)"}
             $edm=Join-Path $outDir ($base+$p.suffix+'.edm')
@@ -171,7 +169,7 @@ jobs:
       - name: Upload four EDMs for ${{ matrix.key }}
         uses: actions/upload-artifact@v4
         with:
-          name: tpg-rubble-v5-companion-edm-${{ matrix.key }}
+          name: tpg-rubble-shape-pack-edm-${{ matrix.key }}
           path: edm-artifacts/${{ matrix.base }}*.edm
           if-no-files-found: error
           compression-level: 0
@@ -185,39 +183,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download all 24 companion EDMs
+      - name: Download all 24 EDMs
         uses: actions/download-artifact@v4
         with:
-          pattern: tpg-rubble-v5-companion-edm-*
+          pattern: tpg-rubble-shape-pack-edm-*
           path: edm-artifacts
           merge-multiple: true
 
-      - name: Download one shared V5 texture set
+      - name: Download shared V5 texture set
         uses: actions/download-artifact@v4
         with:
-          name: tpg-rubble-v5-companion-textures
+          name: tpg-rubble-shape-pack-textures
           path: edm-artifacts/Textures
 
-      - name: Package and validate six-piece DCS drop-in
+      - name: Package and validate clean-name shape pack
         shell: pwsh
         run: |
           $ErrorActionPreference="Stop"
           & "edm-jobs/package_tpg_rubble_v5_companion_pack.ps1"
           if(-not $?){throw "Packaging failed"}
-          $zip="edm-artifacts\TPG_Rubble_Companion_Pack_Cinematic_V5_DCS_DropIn.zip"
+          $zip="edm-artifacts\TPG_Rubble_Shape_Pack_DCS_DropIn.zip"
           if(-not(Test-Path $zip)){throw "Final ZIP missing"}
           $hash=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          Set-Content -Path "edm-artifacts\TPG_Rubble_Companion_Pack_Cinematic_V5_SHA256.txt" -Value "$hash  TPG_Rubble_Companion_Pack_Cinematic_V5_DCS_DropIn.zip" -Encoding ASCII
+          Set-Content -Path "edm-artifacts\TPG_Rubble_Shape_Pack_SHA256.txt" -Value "$hash  TPG_Rubble_Shape_Pack_DCS_DropIn.zip" -Encoding ASCII
           Get-Item $zip | ForEach-Object { Write-Host "FINAL PACKAGE: $($_.FullName) $($_.Length) bytes" }
           Write-Host "SHA256: $hash"
 
-      - name: Upload final six-piece DCS drop-in
+      - name: Upload final DCS drop-in
         uses: actions/upload-artifact@v4
         with:
-          name: TPG-Rubble-Companion-Pack-Cinematic-V5-DCS-DropIn
+          name: TPG-Rubble-Shape-Pack-DCS-DropIn
           path: |
-            edm-artifacts/TPG_Rubble_Companion_Pack_Cinematic_V5_DCS_DropIn.zip
-            edm-artifacts/TPG_Rubble_Companion_Pack_Cinematic_V5_SHA256.txt
+            edm-artifacts/TPG_Rubble_Shape_Pack_DCS_DropIn.zip
+            edm-artifacts/TPG_Rubble_Shape_Pack_SHA256.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
