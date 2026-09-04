@@ -1,0 +1,121 @@
+name: TPG Rubble Shape Pack v1.1 Terrain Clip Fast Pack
+
+on:
+  push:
+    branches:
+      - tpg-rubble-public-build
+    paths:
+      - ".github/workflows/tpg-rubble-v11-terrainclip-fastpack.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download validated v1.0 shape pack artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: TPG-Rubble-Shape-Pack-DCS-DropIn
+          path: base-artifact
+          github-token: ${{ github.token }}
+          repository: Thepropergrip/TPG-DCS-Battle-Cost-Calculator
+          run-id: 33908402108
+
+      - name: Build v1.1 terrain-clipping drop-in
+        shell: python
+        run: |
+          import hashlib, pathlib, re, shutil, zipfile
+
+          root = pathlib.Path.cwd()
+          base_zip = root / 'base-artifact' / 'TPG_Rubble_Shape_Pack_DCS_DropIn.zip'
+          work = root / 'v11work'
+          if work.exists():
+              shutil.rmtree(work)
+          work.mkdir()
+          with zipfile.ZipFile(base_zip) as z:
+              z.extractall(work)
+
+          mod = work / 'TPG_Rubble_Shape_Pack'
+          if not mod.is_dir():
+              raise RuntimeError('Expected top-level TPG_Rubble_Shape_Pack folder missing')
+
+          db = mod / 'Database' / 'db_tpg_rubble_shape_pack.lua'
+          text = db.read_text(encoding='utf-8-sig')
+          if 'positioning="BYNORMAL"' not in text:
+              raise RuntimeError('Expected BYNORMAL positioning not found in validated v1.0 database')
+          text = text.replace('positioning="BYNORMAL"', 'positioning="ONLYHEIGTH"')
+          db.write_text(text, encoding='utf-8')
+
+          entry = mod / 'entry.lua'
+          et = entry.read_text(encoding='utf-8-sig')
+          et = re.sub(r'version="[^"]+"', 'version="1.1.0"', et, count=1)
+          et = et.replace('durable collision cover', 'terrain-locked building-overlap placement and simplified collision cover')
+          entry.write_text(et, encoding='utf-8')
+
+          assets = [
+              'TPG_Rubble_Small_Low',
+              'TPG_Rubble_Tractor_Pushed',
+              'TPG_Rubble_Long_Rectangular',
+              'TPG_Rubble_Wall_Lean',
+              'TPG_Rubble_Long_Ridge',
+              'TPG_Rubble_Multi_Hump',
+          ]
+          shapes = mod / 'Shapes'
+          for a in assets:
+              lods = shapes / f'{a}.lods'
+              lt = lods.read_text(encoding='ascii')
+              old = f'collision_shell="{a}.edm";'
+              new = f'collision_shell="{a}_LOD2.edm";'
+              if old not in lt:
+                  raise RuntimeError(f'Expected intact collision reference missing from {lods.name}')
+              lods.write_text(lt.replace(old, new), encoding='ascii')
+
+          readme = mod / 'README.txt'
+          rt = readme.read_text(encoding='utf-8-sig')
+          rt += '''\n\nV1.1 TERRAIN / BUILDING OVERLAP FIX\n------------------------------------\n- DCS database positioning changed from BYNORMAL to ONLYHEIGTH.\n- Rubble remains terrain-height referenced when its footprint overlaps scenery, so the intended\n  wall/building overlap can clip into the scenery instead of using the contacted roof/top surface.\n- Collision-shell lookup now uses each asset's lower-detail LOD2 EDM rather than the full-detail\n  intact EDM. The LOD2 retains the source pack's dedicated collision proxy geometry while avoiding\n  the high-detail visual model as the collision-shell source.\n- Visual models, textures, proportions, clean names and Life values are unchanged from the validated\n  proportional v1.0 pack. Runtime placement on each DCS map/building remains the final authority.\n'''
+          readme.write_text(rt, encoding='utf-8')
+
+          # Structural validation.
+          dbt = db.read_text(encoding='utf-8')
+          assert 'positioning="ONLYHEIGTH"' in dbt and 'positioning="BYNORMAL"' not in dbt
+          for a in assets:
+              for s in ('', '_Destroyed', '_LOD1', '_LOD2'):
+                  p = shapes / f'{a}{s}.edm'
+                  if not p.is_file() or p.stat().st_size < 16384:
+                      raise RuntimeError(f'Missing/small EDM: {p.name}')
+              lt = (shapes / f'{a}.lods').read_text(encoding='ascii')
+              if f'collision_shell="{a}_LOD2.edm";' not in lt:
+                  raise RuntimeError(f'Wrong collision shell in {a}.lods')
+
+          outdir = root / 'edm-artifacts'
+          outdir.mkdir(exist_ok=True)
+          out = outdir / 'TPG_Rubble_Shape_Pack_v1.1_TerrainClip_DCS_DropIn.zip'
+          if out.exists(): out.unlink()
+          with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+              for p in sorted(mod.rglob('*')):
+                  if p.is_file():
+                      z.write(p, p.relative_to(work))
+
+          h = hashlib.sha256(out.read_bytes()).hexdigest()
+          (outdir / 'TPG_Rubble_Shape_Pack_v1.1_TerrainClip_SHA256.txt').write_text(
+              f'{h}  {out.name}\n', encoding='ascii')
+          print(f'FINAL {out} {out.stat().st_size} bytes SHA256={h}')
+
+      - name: Upload v1.1 terrain-clipping DCS drop-in
+        uses: actions/upload-artifact@v4
+        with:
+          name: TPG-Rubble-Shape-Pack-v1.1-TerrainClip-DCS-DropIn
+          path: |
+            edm-artifacts/TPG_Rubble_Shape_Pack_v1.1_TerrainClip_DCS_DropIn.zip
+            edm-artifacts/TPG_Rubble_Shape_Pack_v1.1_TerrainClip_SHA256.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
