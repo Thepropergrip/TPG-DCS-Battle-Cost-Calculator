@@ -1,0 +1,1 @@
+Companion pack rebuild trigger after Blender module-path bootstrap fix.
