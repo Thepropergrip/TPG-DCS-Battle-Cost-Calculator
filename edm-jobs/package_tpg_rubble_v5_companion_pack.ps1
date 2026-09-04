@@ -9,9 +9,6 @@ $db=Join-Path $pkg 'Database'
 if(Test-Path $pkg){Remove-Item $pkg -Recurse -Force}
 New-Item -ItemType Directory -Force -Path $shapes,$textures,$db | Out-Null
 
-# Visible/DCS-facing names are deliberately plain descriptive names.
-# Life is an initial gameplay tuning pass: larger rubble masses are tougher,
-# while no piece is intended to reliably protect against a direct 500 lb-class bomb.
 $defs=@(
   @{Name='TPG_Rubble_Small_Low';        Display='TPG Rubble Small Low';        Life=850},
   @{Name='TPG_Rubble_Tractor_Pushed';   Display='TPG Rubble Tractor Pushed';   Life=1200},
@@ -23,7 +20,7 @@ $defs=@(
 
 foreach($d in $defs){
   $a=$d.Name
-  foreach($s in @('', '_Destroyed', '_LOD1', '_LOD2')){
+  foreach($s in @('', '_Destroyed', '_LOD1', '_LOD2', '_Collision')){
     $m="$a$s.edm"
     $src=Join-Path $root $m
     if(-not(Test-Path $src)){throw "Missing required model: $m"}
@@ -36,7 +33,7 @@ model={
         {"${a}_LOD1.edm",1200.0};
         {"${a}_LOD2.edm",7000.0};
     };
-    collision_shell="$a.edm";
+    collision_shell="${a}_Collision.edm";
 }
 "@
   Set-Content -Path (Join-Path $shapes "$a.lods") -Value $lods -Encoding ASCII
@@ -55,9 +52,9 @@ declare_plugin("TPG Rubble Shape Pack",
     installed=true,
     dirName=current_mod_path,
     displayName=_("TPG Rubble Shape Pack"),
-    version="1.0.0",
+    version="1.1.0",
     state="installed",
-    info=_("Six high-detail rubble shapes using the Cinematic V5 material family, rigid full-scale debris and durable collision cover")
+    info=_("Six high-detail rubble shapes using Cinematic V5 materials, terrain-locked placement and dedicated physical cover collision shells")
 })
 mount_vfs_model_path(current_mod_path.."/Shapes")
 mount_vfs_texture_path(current_mod_path.."/Textures")
@@ -76,7 +73,7 @@ local function add_structure(f)
             username=f.Name,
             desrt=f.ShapeNameDestr or "self",
             classname="lLandVehicle",
-            positioning="BYNORMAL",
+            positioning="ONLYHEIGTH",
         }
     }
     if f.ShapeNameDestr then
@@ -113,8 +110,8 @@ add_structure({
 Set-Content -Path (Join-Path $db 'db_tpg_rubble_shape_pack.lua') -Value $dbText -Encoding UTF8
 
 $readme=@'
-TPG Rubble Shape Pack
-=====================
+TPG Rubble Shape Pack v1.1
+==========================
 
 INSTALL
 Copy TPG_Rubble_Shape_Pack directly into:
@@ -131,30 +128,39 @@ INCLUDED
 - TPG Rubble Long Ridge
 - TPG Rubble Multi Hump
 
+TERRAIN-LOCKED PLACEMENT
+This revision uses DCS positioning="ONLYHEIGTH" instead of BYNORMAL. The intent is to keep
+rubble referenced to terrain height when its footprint overlaps scenery/buildings, allowing the
+visual rubble to clip into a wall/building instead of being promoted onto the contacted roof/top.
+Runtime DCS placement remains authoritative because scenery interaction can vary by object/map.
+
+DEDICATED COLLISION SHELLS
+Each of the six statics now has its own separate *_Collision.edm. The .lods file references that
+simplified physical hull instead of using the entire high-detail visible rubble EDM as collision.
+The collision hull follows the useful mass of each pile so vehicles/projectiles can still be blocked,
+while protruding pipes, rebar, bricks and high visual fragments no longer define collision behavior.
+The Wall Lean collision shell is a tapered wedge with Y=0 as the wall-contact edge.
+
 GEOMETRY / SCALE
-This revision does NOT stretch visible rubble to create the alternate silhouettes.
-Bricks, hollow CMUs, pipes, rebar, slabs, beams, wood and trash retain their original
-Cinematic V5 dimensions and proportions. The pile is reshaped by changing the continuous
+Visible bricks, hollow CMUs, pipes, rebar, slabs, beams, wood and trash retain their original
+Cinematic V5 dimensions and proportions. Alternate silhouettes are made by reshaping the continuous
 rubble/fines envelope and rigidly relocating complete debris objects/assemblies.
 
 WALL LEAN
-The wall-contact piece has a straight ~10 ft wall edge at its placement origin and a much
-shorter tapered outward toe. Its top-view footprint is intentionally trapezoidal rather
-than square, making the wall-facing direction visually obvious during Mission Editor placement.
+The wall-contact piece has a straight ~10 ft wall edge at its placement origin and a shorter tapered
+outward toe. Its top-view footprint is intentionally trapezoidal rather than square, making the
+wall-facing direction visually obvious in Mission Editor placement.
 
 DURABILITY / COVER
-The database assigns real static-object Life values and the EDMs include collision geometry.
-Initial Life tuning ranges from 850 for the small pile to 1750 for the largest multi-hump pile.
-The intended gameplay target is that larger pieces can absorb roughly several direct tank hits
-and about 5-7 artillery impacts while still acting as physical cover. Exact hit counts vary with
-weapon, impact point, fuze and blast calculation in DCS, so runtime combat testing is authoritative.
-A direct 500 lb-class bomb is NOT intended to provide reliable protection; at most the rubble should
-offer limited mitigation depending on stand-off/impact geometry.
+Static Life values remain tuned from 850 to 1750. Larger rubble masses are intended to absorb several
+tank hits and multiple artillery impacts while functioning as physical cover. Exact hit counts vary
+by weapon, impact point, fuze and blast calculation. A direct 500 lb-class bomb is not intended to
+provide reliable protection.
 
 COEXISTENCE
-This is a new clean-name pack with unique DCS identities. It can coexist with:
-- TPG Rubble Pile 20ft Cinematic V5
-- the earlier Cinematic V5 Companion Pack
+This clean-name pack keeps the same DCS identities as v1.0 so v1.1 is an in-place upgrade of
+TPG_Rubble_Shape_Pack. It remains separate from the original Cinematic V5 pile and the older
+Cinematic V5 Companion Pack.
 
 SHARED ART
 Uses the same Cinematic V5 PBR rubble/fines, concrete, brick, CMU, round dirty pipes,
