@@ -29,11 +29,11 @@ foreach($d in $defs){
   $lods=@"
 model={
     lods={
-        {\"$a.edm\",350.0};
-        {\"${a}_LOD1.edm\",1200.0};
-        {\"${a}_LOD2.edm\",7000.0};
+        {"$a.edm",350.0};
+        {"${a}_LOD1.edm",1200.0};
+        {"${a}_LOD2.edm",7000.0};
     };
-    collision_shell=\"$a.edm\";
+    collision_shell="$a.edm";
 }
 "@
   Set-Content -Path (Join-Path $shapes "$a.lods") -Value $lods -Encoding ASCII
@@ -62,6 +62,8 @@ mount_vfs_texture_path(current_mod_path.."/Textures")
 dofile(current_mod_path.."/Database/db_tpg_rubble_companion_pack_cinematic_v5.lua")
 plugin_done()
 '@
+# PowerShell single-quoted here-string preserves ordinary double quotes exactly.
+$entry=$entry.Replace('\"','"')
 Set-Content -Path (Join-Path $pkg 'entry.lua') -Value $entry -Encoding UTF8
 
 $dbHead=@'
@@ -85,19 +87,20 @@ local function add_structure(f)
 end
 
 '@
+$dbHead=$dbHead.Replace('\"','"')
 $dbText=$dbHead
 foreach($d in $defs){
   $a=$d.Name
   $display=$d.Display
   $dbText += @"
 add_structure({
-    Name=\"$a\",
-    DisplayName=_(\"$display\"),
-    ShapeName=\"$a\",
-    ShapeNameDestr=\"${a}_Destroyed\",
+    Name="$a",
+    DisplayName=_("$display"),
+    ShapeName="$a",
+    ShapeNameDestr="${a}_Destroyed",
     Life=450,
     Rate=100,
-    category=\"Structures\",
+    category="Structures",
     SeaObject=false,
     isPutToWater=false,
     numParking=0,
