@@ -2,17 +2,25 @@ param([Parameter(Mandatory=$true)][string]$ZipPath)
 $ErrorActionPreference='Stop'
 if(-not(Test-Path $ZipPath)){throw "ZIP missing: $ZipPath"}
 
-$expectedRoot='TPG_Rubble_Companion_Pack_Cinematic_V5'
+$expectedRoot='TPG_Rubble_Shape_Pack'
 $assets=@(
- 'TPG_Rubble_SmallLow_Cinematic_V5A',
- 'TPG_Rubble_Pushed_Cinematic_V5B',
- 'TPG_Rubble_Rectangular_Cinematic_V5C',
- 'TPG_Rubble_BuildingFace_Cinematic_V5D',
- 'TPG_Rubble_Ridge_Cinematic_V5E',
- 'TPG_Rubble_MultiHump_Cinematic_V5F'
+ 'TPG_Rubble_Small_Low',
+ 'TPG_Rubble_Tractor_Pushed',
+ 'TPG_Rubble_Long_Rectangular',
+ 'TPG_Rubble_Wall_Lean',
+ 'TPG_Rubble_Long_Ridge',
+ 'TPG_Rubble_Multi_Hump'
 )
+$life=@{
+ 'TPG_Rubble_Small_Low'=850
+ 'TPG_Rubble_Tractor_Pushed'=1200
+ 'TPG_Rubble_Long_Rectangular'=1350
+ 'TPG_Rubble_Wall_Lean'=1400
+ 'TPG_Rubble_Long_Ridge'=1450
+ 'TPG_Rubble_Multi_Hump'=1750
+}
 
-$tmp=Join-Path $env:RUNNER_TEMP ('tpg_rubble_pack_validate_'+[guid]::NewGuid().ToString('N'))
+$tmp=Join-Path $env:RUNNER_TEMP ('tpg_rubble_shape_validate_'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 try {
   Expand-Archive -Path $ZipPath -DestinationPath $tmp -Force
@@ -40,6 +48,9 @@ try {
     foreach($s in @("$a.edm","${a}_LOD1.edm","${a}_LOD2.edm")){
       if($lt -notmatch [regex]::Escape($s)){throw "LODS $a.lods does not reference $s"}
     }
+    if($lt -notmatch [regex]::Escape("collision_shell=`"$a.edm`"")){
+      throw "LODS $a.lods missing collision shell"
+    }
   }
 
   $dds=@(Get-ChildItem (Join-Path $root 'Textures') -Filter *.dds -File)
@@ -54,27 +65,52 @@ try {
   }
 
   $entry=Get-Content (Join-Path $root 'entry.lua') -Raw
-  if($entry -notmatch 'TPG Rubble Companion Pack Cinematic V5'){throw 'Wrong/missing plugin identity'}
-  if($entry -match 'declare_plugin\("TPG Rubble Pile 20ft Cinematic V5"'){throw 'Plugin identity collides with original V5'}
+  if($entry -notmatch 'TPG Rubble Shape Pack'){throw 'Wrong/missing clean plugin identity'}
+  if($entry -match 'Cinematic V5A|Cinematic V5B|Cinematic V5C|Cinematic V5D|Cinematic V5E|Cinematic V5F'){
+    throw 'Visible plugin text still contains confusing Cinematic suffix naming'
+  }
 
-  $dbPath=Join-Path $root 'Database\db_tpg_rubble_companion_pack_cinematic_v5.lua'
-  if(-not(Test-Path $dbPath)){throw 'Companion pack database file missing'}
+  $dbPath=Join-Path $root 'Database\db_tpg_rubble_shape_pack.lua'
+  if(-not(Test-Path $dbPath)){throw 'Shape pack database file missing'}
   $db=Get-Content $dbPath -Raw
   foreach($a in $assets){
-    $nameNeedle='Name="' + $a + '"'
-    $shapeNeedle='ShapeName="' + $a + '"'
-    $destrNeedle='ShapeNameDestr="' + $a + '_Destroyed"'
-    # remove literal backslash characters from the PowerShell string construction above
-    $nameNeedle=$nameNeedle.Replace('\','')
-    $shapeNeedle=$shapeNeedle.Replace('\','')
-    $destrNeedle=$destrNeedle.Replace('\','')
-    if(-not $db.Contains($nameNeedle)){throw "Database missing unique Name for $a"}
-    if(-not $db.Contains($shapeNeedle)){throw "Database missing ShapeName for $a"}
-    if(-not $db.Contains($destrNeedle)){throw "Database missing destroyed ShapeName for $a"}
+    foreach($needle in @(
+      ('Name="' + $a + '"'),
+      ('ShapeName="' + $a + '"'),
+      ('ShapeNameDestr="' + $a + '_Destroyed"'),
+      ('Life=' + [string]$life[$a])
+    )){
+      if(-not $db.Contains($needle)){throw "Database missing expected definition '$needle' for $a"}
+    }
   }
-  if($db.Contains('Name="TPG_Rubble_Pile_20ft_Cinematic_V5"'.Replace('\',''))){throw 'Database collides with original Cinematic V5 Name'}
 
-  Write-Host 'TPG_RUBBLE_V5_COMPANION_PACK_VALIDATION_SUCCESS'
+  foreach($clean in @(
+    'TPG Rubble Small Low',
+    'TPG Rubble Tractor Pushed',
+    'TPG Rubble Long Rectangular',
+    'TPG Rubble Wall Lean',
+    'TPG Rubble Long Ridge',
+    'TPG Rubble Multi Hump'
+  )){
+    if(-not $db.Contains('DisplayName=_("' + $clean + '")')){
+      throw "Missing clean Mission Editor display name: $clean"
+    }
+  }
+
+  # Coexistence: reject identities from original V5 and the previous companion pack.
+  foreach($old in @(
+    'TPG_Rubble_Pile_20ft_Cinematic_V5',
+    'TPG_Rubble_SmallLow_Cinematic_V5A',
+    'TPG_Rubble_Pushed_Cinematic_V5B',
+    'TPG_Rubble_Rectangular_Cinematic_V5C',
+    'TPG_Rubble_BuildingFace_Cinematic_V5D',
+    'TPG_Rubble_Ridge_Cinematic_V5E',
+    'TPG_Rubble_MultiHump_Cinematic_V5F'
+  )){
+    if($db.Contains('Name="' + $old + '"')){throw "Database identity collision with older asset: $old"}
+  }
+
+  Write-Host 'TPG_RUBBLE_SHAPE_PACK_VALIDATION_SUCCESS'
 }
 finally {
   if(Test-Path $tmp){Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue}
