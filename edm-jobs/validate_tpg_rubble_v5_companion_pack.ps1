@@ -34,22 +34,29 @@ try {
   }
 
   $edm=@(Get-ChildItem (Join-Path $root 'Shapes') -Filter *.edm -File)
-  if($edm.Count -ne 24){throw "Expected exactly 24 EDM files (6 assets x 4 states/LODs); found $($edm.Count)"}
+  if($edm.Count -ne 30){throw "Expected exactly 30 EDM files (6 assets x intact/destroyed/LOD1/LOD2/collision); found $($edm.Count)"}
 
   foreach($a in $assets){
     foreach($s in @('', '_Destroyed', '_LOD1', '_LOD2')){
       $f=Join-Path $root ("Shapes\$a$s.edm")
       if(-not(Test-Path $f)){throw "Missing required EDM: $a$s.edm"}
-      if((Get-Item $f).Length -lt 16384){throw "Suspiciously small EDM: $a$s.edm"}
+      if((Get-Item $f).Length -lt 16384){throw "Suspiciously small visual EDM: $a$s.edm"}
     }
+    $cf=Join-Path $root ("Shapes\${a}_Collision.edm")
+    if(-not(Test-Path $cf)){throw "Missing dedicated collision EDM: ${a}_Collision.edm"}
+    if((Get-Item $cf).Length -lt 4096){throw "Suspiciously small collision EDM: ${a}_Collision.edm"}
+
     $lod=Join-Path $root ("Shapes\$a.lods")
     if(-not(Test-Path $lod)){throw "Missing LODS file: $a.lods"}
     $lt=Get-Content $lod -Raw
     foreach($s in @("$a.edm","${a}_LOD1.edm","${a}_LOD2.edm")){
       if($lt -notmatch [regex]::Escape($s)){throw "LODS $a.lods does not reference $s"}
     }
-    if($lt -notmatch [regex]::Escape("collision_shell=`"$a.edm`"")){
-      throw "LODS $a.lods missing collision shell"
+    if($lt -notmatch [regex]::Escape("collision_shell=`"${a}_Collision.edm`"")){
+      throw "LODS $a.lods does not reference dedicated collision shell"
+    }
+    if($lt -match [regex]::Escape("collision_shell=`"$a.edm`"")){
+      throw "LODS $a.lods still uses visible intact EDM as collision shell"
     }
   }
 
@@ -66,13 +73,14 @@ try {
 
   $entry=Get-Content (Join-Path $root 'entry.lua') -Raw
   if($entry -notmatch 'TPG Rubble Shape Pack'){throw 'Wrong/missing clean plugin identity'}
-  if($entry -match 'Cinematic V5A|Cinematic V5B|Cinematic V5C|Cinematic V5D|Cinematic V5E|Cinematic V5F'){
-    throw 'Visible plugin text still contains confusing Cinematic suffix naming'
-  }
+  if($entry -notmatch 'version="1.1.0"'){throw 'Expected v1.1.0 plugin version'}
 
   $dbPath=Join-Path $root 'Database\db_tpg_rubble_shape_pack.lua'
   if(-not(Test-Path $dbPath)){throw 'Shape pack database file missing'}
   $db=Get-Content $dbPath -Raw
+  if(-not $db.Contains('positioning="ONLYHEIGTH"')){throw 'Database missing terrain-locked ONLYHEIGTH positioning'}
+  if($db.Contains('positioning="BYNORMAL"')){throw 'Database still contains BYNORMAL positioning'}
+
   foreach($a in $assets){
     foreach($needle in @(
       ('Name="' + $a + '"'),
@@ -97,7 +105,6 @@ try {
     }
   }
 
-  # Coexistence: reject identities from original V5 and the previous companion pack.
   foreach($old in @(
     'TPG_Rubble_Pile_20ft_Cinematic_V5',
     'TPG_Rubble_SmallLow_Cinematic_V5A',
@@ -110,7 +117,7 @@ try {
     if($db.Contains('Name="' + $old + '"')){throw "Database identity collision with older asset: $old"}
   }
 
-  Write-Host 'TPG_RUBBLE_SHAPE_PACK_VALIDATION_SUCCESS'
+  Write-Host 'TPG_RUBBLE_SHAPE_PACK_V11_VALIDATION_SUCCESS'
 }
 finally {
   if(Test-Path $tmp){Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue}
