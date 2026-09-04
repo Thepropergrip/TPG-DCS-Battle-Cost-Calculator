@@ -1,6 +1,14 @@
-import os, math
+import os, math, sys
+from pathlib import Path
 import bpy
 from mathutils import Vector, Matrix
+
+# export_job.py executes this file with runpy.run_path(), which does not reliably
+# put edm-jobs on sys.path. Bootstrap the generator directory explicitly so the
+# existing Cinematic V5 source modules resolve under Blender/Actions.
+_THIS_DIR = Path(__file__).resolve().parent
+if str(_THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(_THIS_DIR))
 
 import tpg_rubble_v5_patch as V5
 
