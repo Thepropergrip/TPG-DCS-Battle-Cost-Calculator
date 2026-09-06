@@ -1,0 +1,193 @@
+name: TPG Rubble Attachment Shape Pack Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [tpg-rubble-public-build]
+    paths:
+      - '.github/workflows/tpg-rubble-attachment-shape-pack.yml'
+      - 'edm-source/rubble_attachment/**'
+      - 'edm-jobs/build_tpg_rubble_attachment_v12.py'
+      - 'edm-jobs/prepare_tpg_rubble_attachment_textures.py'
+      - 'edm-jobs/package_tpg_rubble_attachment_v12.ps1'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare-source:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact supplied source bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $src=Join-Path $env:GITHUB_WORKSPACE 'edm-source\rubble_attachment'
+          New-Item -ItemType Directory -Force -Path $src | Out-Null
+          $geom=Join-Path $src 'rubble_obj1k.zip'
+          $tex=Join-Path $src 'rubble_textures_only.zip'
+          if(-not(Test-Path $geom)){throw 'Missing rubble_obj1k.zip source transfer'}
+          if(-not(Test-Path $tex)){throw 'Missing rubble_textures_only.zip source transfer'}
+          Expand-Archive $geom $src -Force
+          Expand-Archive $tex $src -Force
+          foreach($f in @('attachment_rubble.obj','attachment_albedo.jpg','attachment_metallic.jpg','attachment_normal.jpg','attachment_roughness.jpg','debris_piles_albedo.jpg','debris_piles_normal.jpg','debris_piles_roughness.jpg','tile_albedo.jpg','tile_normal.jpg','tile_roughness.jpg')){
+            if(-not(Test-Path (Join-Path $src $f))){throw "Missing supplied source $f"}
+          }
+      - name: Reuse validated Cinematic V5 DDS family
+        uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-v5-photo-pbr
+          path: edm-artifacts/Textures
+          github-token: ${{ github.token }}
+          repository: Thepropergrip/TPG-DCS-Battle-Cost-Calculator
+          run-id: 33885780202
+      - name: Reuse validated Cinematic V5 procedural DDS family
+        uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-v5-proc-textures
+          path: edm-artifacts/Textures
+          github-token: ${{ github.token }}
+          repository: Thepropergrip/TPG-DCS-Battle-Cost-Calculator
+          run-id: 33885780202
+      - name: Install texconv and create exact attachment DDS maps
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install pillow numpy
+          $zip=Join-Path $env:RUNNER_TEMP 'dxtex.zip'
+          Invoke-WebRequest 'https://github.com/microsoft/DirectXTex/releases/download/may2026/DirectXTex-desktop_2026.5.30.zip' -OutFile $zip
+          $dx=Join-Path $env:RUNNER_TEMP 'dxtex'; Expand-Archive $zip $dx -Force
+          $exe=Get-ChildItem $dx -Filter texconv.exe -Recurse | Select-Object -First 1
+          if(-not $exe){throw 'texconv.exe missing'}
+          $env:TEXCONV_EXE=$exe.FullName
+          python edm-jobs/prepare_tpg_rubble_attachment_textures.py
+      - name: Upload prepared source and texture set
+        uses: actions/upload-artifact@v4
+        with:
+          name: tpg-rubble-attachment-prepared-source
+          path: |
+            edm-source/rubble_attachment/attachment_rubble.obj
+            edm-artifacts/Textures/*.dds
+          compression-level: 0
+          retention-days: 30
+
+  export-shapes:
+    needs: prepare-source
+    runs-on: windows-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - {key: smalllow, base: TPG_Rubble_Attachment_Small_Low}
+          - {key: pushed, base: TPG_Rubble_Attachment_Tractor_Pushed}
+          - {key: rectangular, base: TPG_Rubble_Attachment_Long_Rectangular}
+          - {key: buildingface, base: TPG_Rubble_Attachment_Wall_Lean}
+          - {key: ridge, base: TPG_Rubble_Attachment_Long_Ridge}
+          - {key: multihump, base: TPG_Rubble_Attachment_Multi_Hump}
+    env:
+      BLENDER_VERSION: '4.1.1'
+      BLENDER_URL: 'https://download.blender.org/release/Blender4.1/blender-4.1.1-windows-x64.zip'
+      ED_EXPORTER_COMMIT: '5f03ba70ec96ca6ce68028eabc786ecd97f9cf93'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download prepared exact source
+        uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-attachment-prepared-source
+          path: prepared
+      - name: Stage source and textures
+        shell: pwsh
+        run: |
+          $src='edm-source\rubble_attachment'; New-Item -ItemType Directory -Force -Path $src | Out-Null
+          Copy-Item 'prepared\attachment_rubble.obj' $src -Force
+          New-Item -ItemType Directory -Force -Path 'edm-artifacts\Textures' | Out-Null
+          Copy-Item 'prepared\*.dds' 'edm-artifacts\Textures' -Force
+      - name: Install Blender 4.1.1
+        shell: pwsh
+        run: |
+          $zip=Join-Path $env:RUNNER_TEMP 'blender.zip'; $dir=Join-Path $env:RUNNER_TEMP 'blender'
+          Invoke-WebRequest $env:BLENDER_URL -OutFile $zip; Expand-Archive $zip $dir -Force
+          $exe=Get-ChildItem $dir -Filter blender.exe -Recurse | Select-Object -First 1
+          if(-not $exe){throw 'Blender missing'}
+          "BLENDER_EXE=$($exe.FullName)" | Out-File $env:GITHUB_ENV -Append
+      - name: Install official Eagle Dynamics EDM exporter
+        shell: pwsh
+        run: |
+          $src=Join-Path $env:RUNNER_TEMP 'Blender-EDM-Exporter'
+          git clone --filter=blob:none https://github.com/EagleDynamics/Blender-EDM-Exporter.git $src
+          git -C $src checkout $env:ED_EXPORTER_COMMIT
+          $scripts=Join-Path $env:GITHUB_WORKSPACE '.edm-blender-scripts'; $addons=Join-Path $scripts 'addons'
+          New-Item -ItemType Directory -Force -Path $addons | Out-Null
+          Copy-Item -Recurse -Force (Join-Path $src 'io_scene_edm') (Join-Path $addons 'io_scene_edm')
+          $upper=Join-Path $addons 'io_scene_edm\Materials'; $temp=Join-Path $addons 'io_scene_edm\__materials_casefix'
+          if(Test-Path $upper){Rename-Item $upper '__materials_casefix'; Rename-Item $temp 'materials'}
+          "BLENDER_USER_SCRIPTS=$scripts" | Out-File $env:GITHUB_ENV -Append
+      - name: Export five EDMs
+        shell: pwsh
+        run: |
+          $out=Join-Path $env:GITHUB_WORKSPACE 'edm-artifacts'; $base='${{ matrix.base }}'
+          $env:TPG_PACK_SHAPE='${{ matrix.key }}'; $env:TPG_ATTACHMENT_SOURCE_DIR=(Join-Path $env:GITHUB_WORKSPACE 'edm-source\rubble_attachment')
+          $passes=@(
+            @{state='intact';detail=2;suffix='';min=16384},
+            @{state='destroyed';detail=2;suffix='_Destroyed';min=16384},
+            @{state='intact';detail=1;suffix='_LOD1';min=16384},
+            @{state='intact';detail=0;suffix='_LOD2';min=16384},
+            @{state='collision';detail=0;suffix='_Collision';min=256}
+          )
+          foreach($p in $passes){
+            $env:TPG_PACK_STATE=$p.state; $env:TPG_PACK_DETAIL=[string]$p.detail
+            $job=Join-Path $env:RUNNER_TEMP ('job_'+$p.state+'_'+$p.detail+'.json')
+            @{mode='script';script='edm-jobs/build_tpg_rubble_attachment_v12.py';output=($base+$p.suffix+'.edm');save_blend=$false}|ConvertTo-Json|Set-Content $job -Encoding UTF8
+            & $env:BLENDER_EXE --background --python 'tools/dcs-edm/export_job.py' -- --job $job --artifact-dir $out
+            if($LASTEXITCODE -ne 0){throw 'EDM export failed'}
+            $f=Join-Path $out ($base+$p.suffix+'.edm'); if(-not(Test-Path $f)){throw "Missing $f"}; if((Get-Item $f).Length -lt $p.min){throw "Small EDM $f"}
+          }
+      - name: Upload five EDMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: tpg-rubble-attachment-edm-${{ matrix.key }}
+          path: edm-artifacts/${{ matrix.base }}*.edm
+          compression-level: 0
+          retention-days: 30
+
+  package:
+    needs: export-shapes
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tpg-rubble-attachment-edm-*
+          path: edm-artifacts
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: tpg-rubble-attachment-prepared-source
+          path: prepared
+      - name: Stage textures
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'edm-artifacts\Textures' | Out-Null
+          Copy-Item 'prepared\*.dds' 'edm-artifacts\Textures' -Force
+      - name: Package and validate coexisting DCS Tech mod
+        shell: pwsh
+        run: |
+          & 'edm-jobs/package_tpg_rubble_attachment_v12.ps1'
+          $zip='edm-artifacts\TPG_Rubble_Attachment_Shape_Pack_DCS_DropIn.zip'
+          $hash=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          Set-Content 'edm-artifacts\TPG_Rubble_Attachment_Shape_Pack_SHA256.txt' "$hash  TPG_Rubble_Attachment_Shape_Pack_DCS_DropIn.zip" -Encoding ASCII
+      - name: Upload final drop-in
+        uses: actions/upload-artifact@v4
+        with:
+          name: TPG-Rubble-Attachment-Shape-Pack-DCS-DropIn
+          path: |
+            edm-artifacts/TPG_Rubble_Attachment_Shape_Pack_DCS_DropIn.zip
+            edm-artifacts/TPG_Rubble_Attachment_Shape_Pack_SHA256.txt
+          compression-level: 0
+          retention-days: 30
