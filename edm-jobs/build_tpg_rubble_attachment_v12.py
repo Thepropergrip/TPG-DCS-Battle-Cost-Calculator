@@ -26,8 +26,8 @@ def _ensure_source():
         raise RuntimeError(f'Missing supplied attachment rubble OBJ: {OBJ}')
 
 
-def _supplied_material(prefix='TPG_ATTACH_Rubble', name='TPG_ATTACH_Mat_Rubble'):
-    return BASE.C.photo_mat(name, prefix)
+def _supplied_material():
+    return BASE.C.photo_mat('TPG_ATTACH_Mat_Rubble', 'TPG_ATTACH_Rubble')
 
 
 def _import_obj():
@@ -102,7 +102,7 @@ def _wall_quad_skin():
     mesh.from_pydata(verts,[],faces); mesh.update()
     obj=bpy.data.objects.new('TPG_ATTACH_WALL_QUAD_SKIN',mesh)
     bpy.context.collection.objects.link(obj)
-    obj.data.materials.append(_supplied_material('TPG_ATTACH_DebrisTile','TPG_ATTACH_Mat_DebrisTile'))
+    obj.data.materials.append(_supplied_material())
     BASE.Q._box_uv(obj, .48)
     return obj
 
