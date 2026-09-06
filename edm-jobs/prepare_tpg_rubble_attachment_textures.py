@@ -20,30 +20,17 @@ def run_tex(srcfile,dst,fmt):
 
 def arm(rough_path,metal_path,dst_png):
     r=np.asarray(Image.open(rough_path).convert('L'),dtype=np.uint8)
-    if metal_path and Path(metal_path).exists():
-        m=np.asarray(Image.open(metal_path).convert('L').resize((r.shape[1],r.shape[0])),dtype=np.uint8)
-    else:
-        m=np.zeros_like(r)
+    m=np.asarray(Image.open(metal_path).convert('L').resize((r.shape[1],r.shape[0])),dtype=np.uint8)
     a=np.full_like(r,255)
-    rgb=np.dstack([a,r,m])
-    Image.fromarray(rgb,'RGB').save(dst_png)
+    Image.fromarray(np.dstack([a,r,m]),'RGB').save(dst_png)
 
-sets=[
- ('attachment','TPG_ATTACH_Rubble',True),
- ('debris_piles','TPG_ATTACH_DebrisPiles',False),
- ('tile','TPG_ATTACH_DebrisTile',False),
-]
-for stem,prefix,has_metal in sets:
-    alb=src/f'{stem}_albedo.jpg'
-    nor=src/f'{stem}_normal.jpg'
-    rou=src/f'{stem}_roughness.jpg'
-    met=src/f'{stem}_metallic.jpg' if has_metal else None
-    for p in [alb,nor,rou]:
-        if not p.exists(): raise RuntimeError(f'Missing supplied map: {p}')
-    run_tex(alb,f'{prefix}_diff.dds','BC7_UNORM_SRGB')
-    run_tex(nor,f'{prefix}_nor_gl.dds','BC7_UNORM')
-    arm_png=out/f'{prefix}_arm_src.png'
-    arm(rou,met,arm_png)
-    run_tex(arm_png,f'{prefix}_arm.dds','BC7_UNORM')
-    if arm_png.exists(): arm_png.unlink()
+alb=src/'attachment_albedo.jpg'; nor=src/'attachment_normal.jpg'; rou=src/'attachment_roughness.jpg'; met=src/'attachment_metallic.jpg'
+for p in [alb,nor,rou,met]:
+    if not p.exists(): raise RuntimeError(f'Missing supplied map: {p}')
+run_tex(alb,'TPG_ATTACH_Rubble_diff.dds','BC7_UNORM_SRGB')
+run_tex(nor,'TPG_ATTACH_Rubble_nor_gl.dds','BC7_UNORM')
+arm_png=out/'TPG_ATTACH_Rubble_arm_src.png'
+arm(rou,met,arm_png)
+run_tex(arm_png,'TPG_ATTACH_Rubble_arm.dds','BC7_UNORM')
+if arm_png.exists(): arm_png.unlink()
 print('TPG_ATTACHMENT_TEXTURES_READY')
