@@ -1,15 +1,11 @@
-import os, math, sys, random
+import os, math, sys
 from pathlib import Path
 import bpy
-from mathutils import Vector
 
 _THIS_DIR = Path(__file__).resolve().parent
 if str(_THIS_DIR) not in sys.path:
     sys.path.insert(0, str(_THIS_DIR))
 
-# Reuse the validated v1.1 generator for the baseline rubble/debris family,
-# then add the user's supplied real rubble object as rigid geometry. This is
-# deliberately additive: no non-uniform scaling of recognizable debris.
 import build_tpg_rubble_v5_companion_pack as BASE
 
 SRC = Path(os.environ.get('TPG_ATTACHMENT_SOURCE_DIR', 'edm-source/rubble_attachment')).resolve()
@@ -30,6 +26,10 @@ def _ensure_source():
         raise RuntimeError(f'Missing supplied attachment rubble OBJ: {OBJ}')
 
 
+def _supplied_material(prefix='TPG_ATTACH_Rubble', name='TPG_ATTACH_Mat_Rubble'):
+    return BASE.C.photo_mat(name, prefix)
+
+
 def _import_obj():
     before = set(bpy.context.scene.objects)
     try:
@@ -39,8 +39,11 @@ def _import_obj():
     after = [o for o in bpy.context.scene.objects if o not in before and o.type == 'MESH']
     if not after:
         raise RuntimeError('Supplied attachment OBJ imported no mesh objects')
+    mat = _supplied_material()
     for o in after:
         o.name = 'TPG_ATTACH_RUBBLE_SOURCE_' + o.name[:38]
+        o.data.materials.clear()
+        o.data.materials.append(mat)
     return after
 
 
@@ -54,17 +57,13 @@ def _join_objects(objs):
 
 
 def _normalize_source(obj):
-    # Uniform normalization only. This preserves every brick/chunk/rebar aspect
-    # ratio in the supplied mesh and never stretches it to fit a target pile.
     xs=[v.co.x for v in obj.data.vertices]; ys=[v.co.y for v in obj.data.vertices]; zs=[v.co.z for v in obj.data.vertices]
-    sx=max(xs)-min(xs); sy=max(ys)-min(ys); sz=max(zs)-min(zs)
-    span=max(sx,sy,sz,1e-6)
+    span=max(max(xs)-min(xs),max(ys)-min(ys),max(zs)-min(zs),1e-6)
     s=1.45/span
     obj.scale=(s,s,s)
     bpy.context.view_layer.objects.active=obj
     obj.select_set(True)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    # Put source bottom at Z=0 around local XY origin.
     xs=[v.co.x for v in obj.data.vertices]; ys=[v.co.y for v in obj.data.vertices]; zs=[v.co.z for v in obj.data.vertices]
     cx=(min(xs)+max(xs))*0.5; cy=(min(ys)+max(ys))*0.5; z0=min(zs)
     for v in obj.data.vertices:
@@ -73,21 +72,15 @@ def _normalize_source(obj):
 
 
 def _duplicate_into_shape(source, key):
-    specs=SHAPE_COPIES[key]
-    for i,(x,y,z,rz) in enumerate(specs):
+    for i,(x,y,z,rz) in enumerate(SHAPE_COPIES[key]):
         dup=source.copy(); dup.data=source.data.copy(); bpy.context.collection.objects.link(dup)
         dup.name=f'TPG_ATTACH_RUBBLE_{key.upper()}_{i:02d}'
-        dup.location=(x,y,z); dup.rotation_euler[2]=rz
-        # Preserve exact supplied mesh proportions: rotation + translation only.
-        dup.scale=(1.0,1.0,1.0)
+        dup.location=(x,y,z); dup.rotation_euler[2]=rz; dup.scale=(1.0,1.0,1.0)
     bpy.data.objects.remove(source, do_unlink=True)
 
 
 def _wall_quad_skin():
-    # Dense Cartesian quad mesh for the wall-contact mound envelope. There is no
-    # center vertex/fan and therefore no radial spokes/radius lines. Y=0 is the
-    # straight building-contact edge; outward toe is +Y.
-    nx, ny = 41, 25
+    nx, ny = 65, 37
     width, depth = 3.05, 1.90
     verts=[]; faces=[]
     for j in range(ny):
@@ -98,7 +91,7 @@ def _wall_quad_skin():
             x=(u*2.0-1.0)*half
             y=t*depth
             face_h=1.58*((1.0-t)**1.22)
-            irregular=0.08*math.sin(x*2.6+0.4)*math.sin(t*math.pi)
+            irregular=0.055*math.sin(x*2.6+0.4)*math.sin(t*math.pi)
             z=max(0.015, face_h + irregular)
             verts.append((x,y,z))
     for j in range(ny-1):
@@ -109,6 +102,8 @@ def _wall_quad_skin():
     mesh.from_pydata(verts,[],faces); mesh.update()
     obj=bpy.data.objects.new('TPG_ATTACH_WALL_QUAD_SKIN',mesh)
     bpy.context.collection.objects.link(obj)
+    obj.data.materials.append(_supplied_material('TPG_ATTACH_DebrisTile','TPG_ATTACH_Mat_DebrisTile'))
+    BASE.Q._box_uv(obj, .48)
     return obj
 
 
@@ -118,20 +113,14 @@ def main():
     if key not in BASE.SHAPES:
         raise RuntimeError(f'Unknown shape {key}')
 
-    # Importing the legacy builder executes its module-level main(). Clear that
-    # temporary scene before constructing this revision so no geometry is doubled.
     BASE._clear_scene()
 
     if state=='collision':
-        # Dedicated v1.1 collision shells already follow the true footprint and
-        # remain independent from protruding visual fragments.
         BASE._build_collision_shell(key)
-        bpy.context.scene['TPG_attachment_upgrade']='v1.2 collision footprint'
+        bpy.context.scene['TPG_attachment_upgrade']='attachment shape pack collision footprint'
         return
 
     _ensure_source()
-
-    # Build the validated baseline scene exactly as before, then inject real source.
     source_variant='destroyed' if state=='destroyed' else 'intact'
     detail=int(os.environ.get('TPG_PACK_DETAIL','2'))
     original_batch=BASE.Q._batch_visual_by_material
@@ -150,9 +139,9 @@ def main():
 
     original_batch()
     BASE._rename_scene_objects(key)
-    bpy.context.scene['TPG_attachment_upgrade']='v1.2 actual supplied OBJ geometry'
+    bpy.context.scene['TPG_attachment_upgrade']='actual supplied OBJ + supplied PBR maps'
     bpy.context.scene['TPG_attachment_source']=OBJ.name
     bpy.context.scene['TPG_shape_method']='shape-specific footprint + rigid supplied debris; no recognizable-object stretching'
-    bpy.context.scene['TPG_wall_topology']='Cartesian quad grid; no radial fan topology'
+    bpy.context.scene['TPG_wall_topology']='65x37 Cartesian quad grid; no radial fan topology'
 
 main()
