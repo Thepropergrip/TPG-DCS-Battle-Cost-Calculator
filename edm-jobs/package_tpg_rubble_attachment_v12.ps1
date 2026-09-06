@@ -34,7 +34,8 @@ model={
 }
 $srcTex=Join-Path $root 'Textures'
 $dds=@(Get-ChildItem $srcTex -Filter *.dds -File)
-if($dds.Count -lt 54){throw "Expected V5 + attachment DDS textures; found $($dds.Count)"}
+if($dds.Count -lt 48){throw "Expected V5 plus exact attachment rubble DDS textures; found $($dds.Count)"}
+foreach($t in @('TPG_ATTACH_Rubble_diff.dds','TPG_ATTACH_Rubble_nor_gl.dds','TPG_ATTACH_Rubble_arm.dds')){if(-not(Test-Path (Join-Path $srcTex $t))){throw "Missing supplied rubble DDS $t"}}
 Copy-Item (Join-Path $srcTex '*.dds') $textures -Force
 $entry=@'
 declare_plugin("TPG Rubble Attachment Shape Pack",
@@ -62,17 +63,16 @@ local function add_structure(f)
 end
 
 '@
-foreach($d in $defs){
- $dbText += "add_structure({Name=\"$($d.Name)\",DisplayName=_(\"$($d.Display)\"),ShapeName=\"$($d.Name)\",ShapeNameDestr=\"$($d.Name)_Destroyed\",Life=$($d.Life),Rate=100,category=\"Structures\",SeaObject=false,isPutToWater=false,numParking=0})`n"
-}
+foreach($d in $defs){$dbText += "add_structure({Name=\"$($d.Name)\",DisplayName=_(\"$($d.Display)\"),ShapeName=\"$($d.Name)\",ShapeNameDestr=\"$($d.Name)_Destroyed\",Life=$($d.Life),Rate=100,category=\"Structures\",SeaObject=false,isPutToWater=false,numParking=0})`n"}
 Set-Content (Join-Path $db 'db_tpg_rubble_attachment_shape_pack.lua') $dbText -Encoding UTF8
 @'
 TPG Rubble Attachment Shape Pack
 ================================
 INSTALL: copy TPG_Rubble_Attachment_Shape_Pack into Saved Games\DCS\Mods\tech\
 MISSION EDITOR: Static Objects -> Structures
-This is a coexisting pack with unique DCS-facing identities. It does not replace TPG_Rubble_Shape_Pack or Cinematic V5.
-Uses the user-supplied rubble OBJ as actual rigid mesh geometry with the supplied PBR maps. Recognizable debris is not non-uniformly stretched.
+Coexisting unique DCS identities; does not replace TPG_Rubble_Shape_Pack or Cinematic V5.
+Uses the user-supplied rubble OBJ as actual rigid mesh geometry with its supplied albedo, normal, roughness and metallic PBR maps.
+Recognizable debris is not non-uniformly stretched.
 Wall Lean uses a dense Cartesian quad wedge with a straight wall-contact edge and no center/radial fan topology.
 Placement remains terrain-locked with positioning="ONLYHEIGTH" and dedicated simplified collision shells.
 Built with Blender 4.1.1 and the official Eagle Dynamics Blender EDM exporter.
@@ -81,15 +81,14 @@ $zip=Join-Path $root 'TPG_Rubble_Attachment_Shape_Pack_DCS_DropIn.zip'
 if(Test-Path $zip){Remove-Item $zip -Force}
 Compress-Archive -Path $pkg -DestinationPath $zip -CompressionLevel Optimal
 if(-not(Test-Path $zip)){throw 'ZIP not created'}
-# hard validation
 $tmp=Join-Path $env:RUNNER_TEMP ('tpg_attach_validate_'+[guid]::NewGuid().ToString('N'))
 Expand-Archive $zip $tmp -Force
 $r=Join-Path $tmp $asset
 if(-not(Test-Path $r)){throw 'Wrong ZIP root'}
 if(@(Get-ChildItem (Join-Path $r 'Shapes') -Filter *.edm -File).Count -ne 30){throw 'Expected 30 EDMs'}
-if(@(Get-ChildItem (Join-Path $r 'Textures') -Filter *.dds -File).Count -lt 54){throw 'Missing attachment/V5 DDS set'}
+if(@(Get-ChildItem (Join-Path $r 'Textures') -Filter *.dds -File).Count -lt 48){throw 'Missing attachment/V5 DDS set'}
 $dbRaw=Get-Content (Join-Path $r 'Database\db_tpg_rubble_attachment_shape_pack.lua') -Raw
 if(-not $dbRaw.Contains('positioning="ONLYHEIGTH"')){throw 'Missing ONLYHEIGTH'}
-if($dbRaw.Contains('TPG_Rubble_Small_Low"')){throw 'Identity collision with old pack'}
+if($dbRaw.Contains('Name="TPG_Rubble_Small_Low"')){throw 'Identity collision with old pack'}
 Remove-Item $tmp -Recurse -Force
 Write-Host 'TPG_RUBBLE_ATTACHMENT_PACK_VALIDATION_SUCCESS'
