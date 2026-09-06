@@ -21,19 +21,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct exact supplied source bundle
+      - name: Expand exact supplied rubble object and PBR maps
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $src=Join-Path $env:GITHUB_WORKSPACE 'edm-source\rubble_attachment'
           New-Item -ItemType Directory -Force -Path $src | Out-Null
-          $geom=Join-Path $src 'rubble_obj1k.zip'
-          $tex=Join-Path $src 'rubble_textures_only.zip'
-          if(-not(Test-Path $geom)){throw 'Missing rubble_obj1k.zip source transfer'}
-          if(-not(Test-Path $tex)){throw 'Missing rubble_textures_only.zip source transfer'}
-          Expand-Archive $geom $src -Force
-          Expand-Archive $tex $src -Force
-          foreach($f in @('attachment_rubble.obj','attachment_albedo.jpg','attachment_metallic.jpg','attachment_normal.jpg','attachment_roughness.jpg','debris_piles_albedo.jpg','debris_piles_normal.jpg','debris_piles_roughness.jpg','tile_albedo.jpg','tile_normal.jpg','tile_roughness.jpg')){
+          $bundle=Join-Path $src 'rubble_obj1k.zip'
+          if(-not(Test-Path $bundle)){throw 'Missing rubble_obj1k.zip source transfer'}
+          Expand-Archive $bundle $src -Force
+          foreach($f in @('attachment_rubble.obj','attachment_albedo.jpg','attachment_metallic.jpg','attachment_normal.jpg','attachment_roughness.jpg')){
             if(-not(Test-Path (Join-Path $src $f))){throw "Missing supplied source $f"}
           }
       - name: Reuse validated Cinematic V5 DDS family
