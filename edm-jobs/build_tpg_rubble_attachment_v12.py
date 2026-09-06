@@ -117,6 +117,11 @@ def main():
     state=os.environ.get('TPG_PACK_STATE','intact').strip().lower()
     if key not in BASE.SHAPES:
         raise RuntimeError(f'Unknown shape {key}')
+
+    # Importing the legacy builder executes its module-level main(). Clear that
+    # temporary scene before constructing this revision so no geometry is doubled.
+    BASE._clear_scene()
+
     if state=='collision':
         # Dedicated v1.1 collision shells already follow the true footprint and
         # remain independent from protruding visual fragments.
